@@ -64,7 +64,6 @@ def evaluate(model, dev_data, batches: int = 100):
     
     model.eval()
     encoder = model.model.encoder
-    print('hi')
     with torch.no_grad():
         for _ in range(batches):
             x, y, _, _ = dev_data.next_batch()
