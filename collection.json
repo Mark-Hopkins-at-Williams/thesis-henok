@@ -1,0 +1,36 @@
+{
+    "model_dir": "examples/model-example1",
+    "finetuning_parameters": {
+        "base_model": "facebook/nllb-200-distilled-600M",
+        "finetune": false,
+        "freeze_encoder": false,
+        "freeze_decoder": false,
+        "batch_size": 1,
+        "num_steps": 2000
+    },
+    "corpora": {
+        "seed": {
+            "eng_Latn": {
+                "lang_code": "eng_Latn",
+                "train": "/mnt/storage/data/nllb-seed/eng_Latn",
+                "dev": "/mnt/storage/data/flores/dev.eng_Latn",
+                "test": "/mnt/storage/data/flores/test.eng_Latn",
+                "permutation": 0
+            },
+            "lij_Latn": {
+                "lang_code": "lij_Latn",
+                "train": "/mnt/storage/data/nllb-seed/lij_Latn",
+                "dev": "/mnt/storage/data/flores/dev.lij_Latn",
+                "test": "/mnt/storage/data/flores/test.lij_Latn",
+                "permutation": 0
+            }
+        }
+    },
+    "bitexts": [
+        {
+            "corpus": "seed",
+            "src": "eng_Latn",
+            "tgt": "lij_Latn"
+        }
+    ]
+}
