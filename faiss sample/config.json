@@ -55,10 +55,11 @@
         }
     },
     "bitexts": [
-        {"corpus": "seed", "src": "eng_Latn", "tgt": "ary_Arab"},
-        {"corpus": "seed", "src": "eng_Latn", "tgt": "dzo_Tibt"},
-        {"corpus": "seed", "src": "eng_Latn", "tgt": "mag_Deva"},
-        {"corpus": "seed", "src": "eng_Latn", "tgt": "knc_Latn"},
-        {"corpus": "seed", "src": "eng_Latn", "tgt": "shn_Mymr"}
+        {"corpus": "seed", "tgt": "eng_Latn", "src": "ary_Arab"},
+        {"corpus": "seed", "tgt": "eng_Latn", "src": "dzo_Tibt"},
+        {"corpus": "seed", "tgt": "eng_Latn", "src": "mag_Deva"},
+        {"corpus": "seed", "tgt": "eng_Latn", "src": "knc_Latn"},
+        {"corpus": "seed", "tgt": "eng_Latn", "src": "shn_Mymr"},
+        {"corpus": "seed", "tgt": "eng_Latn", "src": "eng_Latn"}
     ]
 }

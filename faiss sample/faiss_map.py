@@ -3,13 +3,17 @@ import os
 sys.path.append(os.path.abspath(".."))
 import json
 import torch
-import numpy as np
+from collections import defaultdict
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import faiss
 from corpora import MixtureOfBitexts, TokenizedMixtureOfBitexts, load_tokenizer
 from transformers import AutoModelForSeq2SeqLM
+from tqdm import tqdm
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np
+
 
 USE_CUDA = torch.cuda.is_available()
 
@@ -21,67 +25,74 @@ def compute_language_embeddings(model, tokenized_data, lang_codes):
     """
     model.eval()
     encoder = model.model.encoder
-    embeddings = {lang: [] for lang in lang_codes.values()}
+    embeddings = defaultdict(list)
 
     with torch.no_grad():
         batch = tokenized_data.next_batch()
         while batch is not None:
-            x, y, src_lang, tgt_lang = batch
-
-            # Source embeddings: first sentence in batch, all tokens
+            x, _, src_lang, _ = batch
+            
+            # Source embeddings: first (and only) sentence in batch, all tokens
             x = x.to(model.device)
             x_enc = encoder(**x).last_hidden_state[0].cpu().numpy()  # [seq_len, hidden_dim]
-            embeddings[lang_codes[src_lang]].append(x_enc)
-
-            # Target embeddings: first sentence in batch, all tokens
-            y = y.to(model.device)
-            y_enc = encoder(**y).last_hidden_state[0].cpu().numpy()
-            embeddings[lang_codes[tgt_lang]].append(y_enc)
-
+            embeddings[lang_codes[src_lang]].append(x_enc)           
+            
             batch = tokenized_data.next_batch()
-
-    # Concatenate all batches per language
-    for lang in embeddings:
-        if embeddings[lang]:
-            embeddings[lang] = np.vstack(embeddings[lang])
-        else:
-            embeddings[lang] = np.zeros((1, model.config.d_model))
-    return embeddings
+    return dict(embeddings)
 
 
-def compute_faiss_heatmap(embeddings, lang_list):
+def compute_faiss_heatmap(embeddings):
     """
     embeddings: dict lang_code -> (num_tokens, hidden_dim)
     lang_list: ordered list of languages
     Returns a matrix of average nearest-neighbor distances (not symmetric).
     """
+    lang_list = embeddings.keys()
     n = len(lang_list)
+    distances = defaultdict(list)
     heatmap = np.zeros((n, n))
 
-    for i, lang_i in enumerate(lang_list):
-        xb = embeddings[lang_i].astype('float32')
-        index = faiss.IndexFlatL2(xb.shape[1])
-        index.add(xb)
+    for i, lang_i in tqdm(enumerate(lang_list)):        
+        for sent_index in range(len(embeddings[lang_i])):
+            xb = embeddings[lang_i][sent_index]        
+            index = faiss.IndexFlatL2(xb.shape[1])
+            index.add(xb)
+            for j, lang_j in enumerate(lang_list):
+                xq = embeddings[lang_j][sent_index].astype('float32')
+                D, I = index.search(xq, 1)  # nearest neighbor distances
+                avg_distance = D.mean()
+                distances[(i, j)].append(avg_distance)
+    for (i, j) in distances:
+        heatmap[i, j] = sum(distances[(i,j)]) / len(distances[(i,j)])        
 
-        for j, lang_j in enumerate(lang_list):
-            xq = embeddings[lang_j].astype('float32')
-            D, I = index.search(xq, 1)  # nearest neighbor distances
-            avg_distance = D.mean()
-            heatmap[i, j] = avg_distance
-
-    return heatmap
+    return heatmap, lang_list
 
 
-def plot_heatmap(matrix, labels, out_file="language_heatmap.png"):
-    plt.figure(figsize=(6, 5))
-    im = plt.imshow(matrix, cmap="viridis")
-    plt.colorbar(im)
-    plt.xticks(np.arange(len(labels)), labels, rotation=45)
-    plt.yticks(np.arange(len(labels)), labels)
-    plt.title("FAISS Avg Nearest-Neighbor L2 Distances (Fine-Grained)")
+
+def plot_clustermap(matrix, labels, out_file="language_clustermap.png"):
+    # Convert the matrix to a DataFrame for labeled axes
+    import pandas as pd
+    df = pd.DataFrame(matrix, index=labels, columns=labels)
+
+    # Create the clustermap
+    g = sns.clustermap(
+        df,
+        cmap="viridis",
+        xticklabels=True,
+        yticklabels=True,
+        linewidths=0.5,
+    )
+
+    # Customize titles and layout
+    plt.suptitle("FAISS Avg Nearest-Neighbor L2 Distances (Fine-Grained)", y=1.02)
+    g.ax_heatmap.set_xticklabels(g.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
+    g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_yticklabels(), rotation=0)
+
+    # Save and show
     plt.tight_layout()
-    plt.savefig(out_file)
-    print(f"Saved heatmap to {out_file}")
+    plt.savefig(out_file, bbox_inches="tight")
+    print(f"Saved clustermap to {out_file}")
+
 
 
 def main():
@@ -109,13 +120,15 @@ def main():
                                               lang_codes=lang_codes, permutation_map={})
 
     # Compute fine-grained embeddings
+    print('computing embeddings...')
     embeddings = compute_language_embeddings(model, tokenized_dev, lang_codes)
 
     # Compute FAISS heatmap
-    heatmap = compute_faiss_heatmap(embeddings, LANGS)
+    print('computing heatmap...')
+    heatmap, lang_list = compute_faiss_heatmap(embeddings)
 
     # Plot heatmap
-    plot_heatmap(heatmap, LANGS, out_file="faiss_language_heatmap.png")
+    plot_clustermap(heatmap, lang_list, out_file="faiss_language_heatmap.png")
 
 
 if __name__ == "__main__":
