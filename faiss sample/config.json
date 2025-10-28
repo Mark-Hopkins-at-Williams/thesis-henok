@@ -1,0 +1,64 @@
+{
+    "model_dir": "examples/model-heatmap",
+    "finetuning_parameters": {
+        "base_model": "facebook/nllb-200-distilled-600M",
+        "finetune": false,
+        "freeze_encoder": false,
+        "freeze_decoder": false,
+        "batch_size": 1,
+        "num_steps": 2000
+    },
+    "corpora": {
+        "seed": {
+            "eng_Latn": {
+                "lang_code": "eng_Latn",
+                "train": "/mnt/storage/data/nllb-seed/eng_Latn",
+                "dev": "/mnt/storage/data/flores/dev.eng_Latn",
+                "test": "/mnt/storage/data/flores/test.eng_Latn",
+                "permutation": 0
+            },
+            "ary_Arab": {
+                "lang_code": "ary_Arab",
+                "train": "/mnt/storage/data/nllb-seed/ary_Arab",
+                "dev": "/mnt/storage/data/flores/dev.ary_Arab",
+                "test": "/mnt/storage/data/flores/test.ary_Arab",
+                "permutation": 0
+            },
+            "dzo_Tibt": {
+                "lang_code": "dzo_Tibt",
+                "train": "/mnt/storage/data/nllb-seed/dzo_Tibt",
+                "dev": "/mnt/storage/data/flores/dev.dzo_Tibt",
+                "test": "/mnt/storage/data/flores/test.dzo_Tibt",
+                "permutation": 0
+            },
+            "mag_Deva": {
+                "lang_code": "mag_Deva",
+                "train": "/mnt/storage/data/nllb-seed/mag_Deva",
+                "dev": "/mnt/storage/data/flores/dev.mag_Deva",
+                "test": "/mnt/storage/data/flores/test.mag_Deva",
+                "permutation": 0
+            },
+            "knc_Latn": {
+                "lang_code": "knc_Latn",
+                "train": "/mnt/storage/data/nllb-seed/knc_Latn",
+                "dev": "/mnt/storage/data/flores/dev.knc_Latn",
+                "test": "/mnt/storage/data/flores/test.knc_Latn",
+                "permutation": 0
+            },
+            "shn_Mymr": {
+                "lang_code": "shn_Mymr",
+                "train": "/mnt/storage/data/nllb-seed/shn_Mymr",
+                "dev": "/mnt/storage/data/flores/dev.shn_Mymr",
+                "test": "/mnt/storage/data/flores/test.shn_Mymr",
+                "permutation": 0
+            }
+        }
+    },
+    "bitexts": [
+        {"corpus": "seed", "src": "eng_Latn", "tgt": "ary_Arab"},
+        {"corpus": "seed", "src": "eng_Latn", "tgt": "dzo_Tibt"},
+        {"corpus": "seed", "src": "eng_Latn", "tgt": "mag_Deva"},
+        {"corpus": "seed", "src": "eng_Latn", "tgt": "knc_Latn"},
+        {"corpus": "seed", "src": "eng_Latn", "tgt": "shn_Mymr"}
+    ]
+}
