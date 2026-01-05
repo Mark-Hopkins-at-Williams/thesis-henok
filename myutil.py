@@ -3,6 +3,7 @@ import gc
 import sys
 import torch
 from transformers import AutoModelForSeq2SeqLM, AutoConfig
+from transformers import AutoTokenizer
 
 
 def logger(s, to_stderr=False):
@@ -17,6 +18,12 @@ def logger(s, to_stderr=False):
 def cleanup():
     gc.collect()
     torch.cuda.empty_cache()
+
+
+def what_nllb_token_is_this(token_id, tokenizer=None):
+    if tokenizer is None:
+        tokenizer = AutoTokenizer.from_pretrained("facebook/nllb-200-distilled-600M")
+    return tokenizer.convert_ids_to_tokens([token_id])[0]
 
 
 def prepare_model_for_finetuning(ft_params):
