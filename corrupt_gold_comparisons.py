@@ -19,7 +19,7 @@ def translate_with_noise_and_similarity(
     dev_data,
     target_lang_code,
     batch_size,
-    noise_variance,
+    sigma,
     max_length=128,
 ):
     model.eval()
@@ -44,7 +44,6 @@ def translate_with_noise_and_similarity(
             out = encoder(**x)
             encoder_states_gold = out.last_hidden_state
 
-            sigma = noise_variance**0.5
             noise = sigma * torch.randn_like(encoder_states_gold)
             encoder_states_corrupted = encoder_states_gold + noise
 
@@ -160,7 +159,6 @@ def main():
         bleu_by_sigma.append(bleu)
         cosine_all.extend(sims)
         bleu_all.extend([bleu] * len(sims))
-
 
     # ---- plot: BLEU vs sigma ----
     plt.figure()
