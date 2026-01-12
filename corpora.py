@@ -199,3 +199,12 @@ class TokenizedMixtureOfBitexts:
         else:
             lang2_tokenized = self._tokenize(lang2_sents, lang2)
         return lang1_tokenized, lang2_tokenized, lang1, lang2
+
+
+class MonotextWithGoalEncoding:
+
+    def __init__(self, bitext):
+        self.bitext = bitext
+
+    def __iter__(self) -> Iterator[Tuple[str, str]]:
+        bitext_iter = iter(self.bitext)
