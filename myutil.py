@@ -8,10 +8,12 @@ from transformers import AutoTokenizer
 
 def logger(s, to_stderr=False):
     if to_stderr:
-        sys.stderr.write(s + "\n")
+        sys.stderr.write(str(s))
+        sys.stderr.write("\n")
         sys.stderr.flush()
     else:
-        sys.stdout.write(s + "\n")
+        sys.stdout.write(str(s))
+        sys.stdout.write("\n")
         sys.stdout.flush()
 
 

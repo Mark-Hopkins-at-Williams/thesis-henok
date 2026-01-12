@@ -4,22 +4,17 @@ import torch.nn.functional as F
 
 
 class SimpleAttention(nn.Module):
-    def __init__(self):
+    def __init__(self, k=2):
         super().__init__()
+        self.k = k
 
     def forward(self, e, f):
         Q, K, V = e, f, f
-        # print("Q:")
-        # print(Q)
-        # print("K^T:")
-        # print(K.transpose(-2, -1))
-        scores = (Q @ K.transpose(-2, -1)) * 2  # TODO: what should this multiplier be?
-        # print("scores:")
-        # print(scores)
+        scores = (
+            Q @ K.transpose(-2, -1)
+        ) * self.k  # TODO: what should this multiplier be?
         weights = F.softmax(scores, dim=-1)
-        # print(weights)
         output = torch.matmul(weights, V)
-        # print(output)
         return output, weights
 
 

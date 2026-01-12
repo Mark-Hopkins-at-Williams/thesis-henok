@@ -2,6 +2,7 @@ import random
 from typing import Dict, Tuple, List, Optional, Iterator, Callable
 from torch.utils.data import DataLoader, IterableDataset
 from tokenization import Tokenizer
+from myutil import logger
 
 CorpusId = Tuple[str, str]  # typedef
 
@@ -102,6 +103,11 @@ class MixtureOfBitexts:
             )
         )
 
+    def restart(self):
+        self.completed_bitexts = set()
+        for key in self.keys:
+            self.batch_iters[key] = self._create_iterator(key)
+
     def next_batch(self) -> Optional[Tuple[List[str], List[str], str, str]]:
         still_choosing = True
         while still_choosing and len(self.completed_bitexts) < len(self.keys):
@@ -200,11 +206,26 @@ class TokenizedMixtureOfBitexts:
             lang2_tokenized = self._tokenize(lang2_sents, lang2)
         return lang1_tokenized, lang2_tokenized, lang1, lang2
 
+    def restart(self):
+        self.mixture_of_bitexts.restart()
 
-class MonotextWithGoalEncoding:
 
-    def __init__(self, bitext):
-        self.bitext = bitext
+class TokenizedMixtureOfTextAndGoalEncoding:
 
-    def __iter__(self) -> Iterator[Tuple[str, str]]:
-        bitext_iter = iter(self.bitext)
+    def __init__(self, tmob, encoder):
+        self.tmob = tmob
+        self.encoder = encoder
+        self.encoder.eval()
+
+    def next_batch(self):
+        batch = self.tmob.next_batch()
+        if batch is not None:
+            lang1_sents, lang2_sents, lang1, _ = batch
+            lang2_sents = lang2_sents.to(self.encoder.device)
+            encodings = self.encoder(**lang2_sents).last_hidden_state
+            return lang1_sents, lang1, encodings
+        else:
+            return None
+
+    def restart(self):
+        self.tmob.restart()

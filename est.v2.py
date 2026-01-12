@@ -38,7 +38,7 @@ def plot_losses(train_x, train_y, dev_x, dev_y, out_path: str):
     plt.savefig(out_path)
 
 
-def finetune(model, train_data1, train_data2, dev_data, model_dir, ft_params):
+def finetune(model, train_data, dev_data, model_dir, ft_params):
     logger(f"Training {model_dir}")
     model.save_pretrained(model_dir)
     optimizer = Adafactor(
@@ -55,44 +55,21 @@ def finetune(model, train_data1, train_data2, dev_data, model_dir, ft_params):
     dev_plot_x, dev_plot_y = [], []
     best_dev_loss, steps_since_best = None, 0
     encoder = model.model.encoder
-    attn = SimpleAttention()
     for i in tqdm(range(ft_params.num_training_steps)):
         try:
             encoder.eval()
-            sents, lang, goal_encodings = train_data1.next_batch()
+            sents, lang, goal_encodings = train_data.next_batch()
             sents = sents.to(encoder.device)
             goal_encodings = goal_encodings.to(encoder.device)
             sent_encodings = encoder(**sents).last_hidden_state
-            if False:  # lang != ("europarl", "es"):
-                print("assimilating")
-                out1, _ = attn(sent_encodings, goal_encodings)
-                token_scores1 = 1 - F.cosine_similarity(sent_encodings, out1, dim=-1)
-                out2, _ = attn(goal_encodings, sent_encodings)
-                token_scores2 = 1 - F.cosine_similarity(goal_encodings, out2, dim=-1)
-                loss = (token_scores1.mean() + token_scores2.mean()) / 2.0
-            else:
-                # loss = ((sent_encodings - goal_encodings) ** 2).mean()
-                loss = (
-                    1 - F.cosine_similarity(sent_encodings, goal_encodings, dim=-1)
-                ).mean()
-                loss.backward()
-                train_losses.append(loss.item())
-                optimizer.step()
-                optimizer.zero_grad(set_to_none=True)
-                if scheduler is not None:
-                    scheduler.step()
+            loss = ((sent_encodings - goal_encodings) ** 2).mean()
 
-            # model.train()
-            # x, y, _, _ = train_data2.next_batch()
-            # x = x.to(model.device)
-            # y = y.to(model.device)
-            # loss = model(**x, labels=y.input_ids).loss
-            # # train_losses.append(loss.item())
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), ft_params.max_grad_norm)
-            # optimizer.step()
-            # optimizer.zero_grad(set_to_none=True)
-            # if scheduler is not None:
-            #     scheduler.step()
+            loss.backward()
+            train_losses.append(loss.item())
+            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+            if scheduler is not None:
+                scheduler.step()
         except RuntimeError as e:
             if "out of memory" in str(e):
                 logger("GPU OOM. Cleaning up.", to_stderr=True)
@@ -120,35 +97,7 @@ def finetune(model, train_data1, train_data2, dev_data, model_dir, ft_params):
                         sents = sents.to(encoder.device)
                         goal_encodings = goal_encodings.to(encoder.device)
                         sent_encodings = encoder(**sents).last_hidden_state
-                        # out1, weights1 = attn(sent_encodings, goal_encodings)
-                        # diag1 = weights1[0].squeeze().diagonal()
-                        # print([round(x, 2) for x in diag1.tolist()])
-                        # token_scores1 = 1 - F.cosine_similarity(
-                        #     sent_encodings, out1, dim=-1
-                        # )
-                        # out2, weights2 = attn(goal_encodings, sent_encodings)
-                        # diag2 = weights2[0].squeeze().diagonal()
-                        # print([round(x, 2) for x in diag2.tolist()])
-
-                        # token_scores2 = 1 - F.cosine_similarity(
-                        #     goal_encodings, out2, dim=-1
-                        # )
-                        # loss = (token_scores1.mean() + token_scores2.mean()) / 2.0
-                        loss = (
-                            1
-                            - F.cosine_similarity(
-                                sent_encodings, goal_encodings, dim=-1
-                            )
-                        ).mean()
-
-                        # logger("goal:")
-                        # logger(
-                        #     [round(x, 2) for x in goal_encodings[0][2].tolist()][:10]
-                        # )
-                        # logger("sent:")
-                        # logger(
-                        #     [round(x, 2) for x in sent_encodings[0][2].tolist()][:10]
-                        # )
+                        loss = ((sent_encodings - goal_encodings) ** 2).mean()
                         if lang not in dev_losses:
                             dev_losses[lang] = []
                         dev_losses[lang].append(loss.item())
@@ -239,7 +188,6 @@ def main():
     finetune(
         model,
         train_mix,
-        tokenized_train2,
         dev_mix,
         experiment_dir,
         ft_params,

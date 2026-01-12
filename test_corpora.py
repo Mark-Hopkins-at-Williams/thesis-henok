@@ -1,11 +1,13 @@
 import json
 import unittest
 from corpora import Bitext, MultifileBitext, MixtureOfBitexts, TokenizedMixtureOfBitexts
+from corpora import TokenizedMixtureOfTextAndGoalEncoding
 from torch import tensor
 from tokenization import NllbTokenizer
+from transformers import AutoModelForSeq2SeqLM
 
 
-class TestUtil(unittest.TestCase):
+class TestCorpora(unittest.TestCase):
     def test_streaming_bitext(self):
         bitext = Bitext("test_files/lang1.txt", "test_files/lang2.txt")
         expected = [
@@ -427,6 +429,28 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(
             lang2_batch["attention_mask"].tolist(), expected_lang2_mask.tolist()
         )
+
+    def test_monotext_with_goal_encoding(self):
+        text_files = {
+            ("test", "eng"): "test_files/lang1.txt",
+            ("test", "fra"): "test_files/lang2.txt",
+        }
+        lang_codes = {("test", "eng"): "eng_Latn", ("test", "fra"): "fra_Latn"}
+        mix = MixtureOfBitexts.create_from_files(
+            text_files, [(("test", "eng"), ("test", "fra"), None)], 3
+        )
+        tokenizer = NllbTokenizer("600M")
+        tmob = TokenizedMixtureOfBitexts(
+            mix, tokenizer, lang_codes=lang_codes, use_alt_pad_token_for_tgt_lang=False
+        )
+        model = AutoModelForSeq2SeqLM.from_pretrained(
+            "facebook/nllb-200-distilled-600M"
+        )
+        tmotge = TokenizedMixtureOfTextAndGoalEncoding(tmob, model.model.encoder)
+        lang1_sents, lang1, goal_encodings = tmotge.next_batch()
+        print(lang1_sents["input_ids"])
+        print(lang1)
+        print(goal_encodings)
 
 
 if __name__ == "__main__":

@@ -42,7 +42,7 @@ def translate_tokenized_mixture_of_bitexts(mix, model, tokenizer, lang_codes, pm
     batch = mix.next_batch()
     translations = dict()
     while batch is not None:
-        src, _, src_lang, tgt_lang = batch
+        src, tgt, src_lang, tgt_lang = batch
         permutation = pmap[tgt_lang] if tgt_lang in pmap else None
         src_code = lang_codes[src_lang]
         tgt_code = lang_codes[tgt_lang]
@@ -51,6 +51,7 @@ def translate_tokenized_mixture_of_bitexts(mix, model, tokenizer, lang_codes, pm
             translations[key] = []
         translated = translate(src, tokenizer, model, tgt_code, permutation)
         translations[key].extend(translated)
+        logger(f"translation: {translated[0]}")
         batch = mix.next_batch()
     return translations
 
