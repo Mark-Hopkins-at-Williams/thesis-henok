@@ -2,7 +2,7 @@
     "model_dir": "experiments/enciphered_spa_to_eng",
     "corpora": {
         "europarl": {
-            "en": {
+            "es": {
                 "lang_code": "eng_Latn",
                 "train": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/train.en",
                 "dev": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/dev.small.en",
