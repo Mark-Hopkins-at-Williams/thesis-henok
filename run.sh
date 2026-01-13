@@ -6,3 +6,4 @@
 #SBATCH -e logs/log_%j.err
 #SBATCH --gres=gpu:1
 python est_v1.py --config configs/est2.json
+
