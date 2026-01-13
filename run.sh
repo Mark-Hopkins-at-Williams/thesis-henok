@@ -5,4 +5,5 @@
 #SBATCH -o logs/log_%j.out
 #SBATCH -e logs/log_%j.err
 #SBATCH --gres=gpu:1
-python faiss_sample_comparison.py
+python est_v1.py --config configs/est2.json
+
