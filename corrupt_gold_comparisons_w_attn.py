@@ -6,15 +6,16 @@ from configure import (
 from validate import evaluate_translations
 from corpora import MixtureOfBitexts, TokenizedMixtureOfBitexts
 from myutil import prepare_model_for_finetuning
+from attention import SimpleAttention
 
 import sys
 import torch
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
-import faiss
 import numpy as np
 
 
-def translate_with_noise_and_faiss_similarity(
+def translate_with_noise_and_attention_similarity(
     model,
     tokenizer,
     dev_data,
@@ -27,15 +28,16 @@ def translate_with_noise_and_faiss_similarity(
     Returns:
       - gold translations
       - corrupted translations
-      - avg FAISS NN distance per sentence
+      - attention-based similarity score per sentence
     """
     model.eval()
     encoder = model.model.encoder
     decoder = model.model.decoder
+    attention = SimpleAttention().to(model.device)
 
     gold_translations = []
     corrupted_translations = []
-    faiss_sims = []
+    attn_sims = []
 
     counter = 0
     with torch.no_grad():
@@ -56,38 +58,23 @@ def translate_with_noise_and_faiss_similarity(
             encoder_states_corrupted = encoder_states_gold + noise
 
             attention_mask = x["attention_mask"]  # [B, T]
-
-            # ----- FAISS similarity (sentence-level) -----
-            for b in range(encoder_states_gold.size(0)):
-                mask_b = attention_mask[b].bool()
-
-                gold_tokens = (
-                    encoder_states_gold[b][mask_b]
-                    .detach()
-                    .cpu()
-                    .numpy()
-                    .astype("float32")
-                )
-                corr_tokens = (
-                    encoder_states_corrupted[b][mask_b]
-                    .detach()
-                    .cpu()
-                    .numpy()
-                    .astype("float32")
-                )
-
-                # Build FAISS index on gold tokens
-                index = faiss.IndexFlatL2(gold_tokens.shape[1])
-                index.add(gold_tokens)
-
-                # Query with corrupted tokens
-                D, _ = index.search(corr_tokens, 1)
-                avg_nn_dist = float(D.mean())
-
-                faiss_sims.append(avg_nn_dist)
-
             encoder_attn_mask = attention_mask.float()
 
+            # ----- ATTENTION-BASED SIMILARITY (sentence-level) -----
+            attended_encodings, _ = attention(
+                encoder_states_corrupted, encoder_states_gold
+            )  # [B, T, H]
+
+            token_losses = 1 - F.cosine_similarity(
+                encoder_states_corrupted, attended_encodings, dim=-1
+            )  # [B, T]
+
+            for b in range(token_losses.size(0)):
+                mask_b = attention_mask[b].bool()
+                sent_loss = token_losses[b][mask_b].mean().item()
+                attn_sims.append(sent_loss)
+
+            # ----- decoding -----
             def decode(encoder_states):
                 input_ids = torch.tensor([[2, target_lang_code]] * batch_size).to(
                     model.device
@@ -116,7 +103,7 @@ def translate_with_noise_and_faiss_similarity(
 
             batch = dev_data.next_batch()
 
-    return gold_translations, corrupted_translations, faiss_sims
+    return gold_translations, corrupted_translations, attn_sims
 
 
 def main():
@@ -155,11 +142,10 @@ def main():
     tokenizer = initialize_tokenizer(config)
     model = prepare_model_for_finetuning(ft_params)
 
-    # ---- experiment sweep ----
-    sigmas = [0.2, 0.25, 0.27, 0.3]
+    sigmas = [0.1, 0.15, 0.2]
 
     bleu_by_sigma = []
-    faiss_all = []
+    attn_all = []
     bleu_all = []
 
     for s in sigmas:
@@ -172,7 +158,7 @@ def main():
             dev_data, tokenizer, lang_codes=lang_codes
         )
 
-        gold, corrupted, faiss_sims = translate_with_noise_and_faiss_similarity(
+        gold, corrupted, attn_sims = translate_with_noise_and_attention_similarity(
             model,
             tokenizer,
             tokenized_dev,
@@ -185,8 +171,8 @@ def main():
         bleu = metrics["bleu"] if isinstance(metrics, dict) else metrics
 
         bleu_by_sigma.append(bleu)
-        faiss_all.extend(faiss_sims)
-        bleu_all.extend([bleu] * len(faiss_sims))
+        attn_all.extend(attn_sims)
+        bleu_all.extend([bleu] * len(attn_sims))
 
     # ---- plot: BLEU vs sigma ----
     plt.figure()
@@ -197,18 +183,18 @@ def main():
     plt.grid(True)
     plt.savefig("bleu_vs_sigma.png", bbox_inches="tight")
 
-    # ---- plot: BLEU vs FAISS similarity ----
+    # ---- plot: BLEU vs attention similarity ----
     plt.figure()
-    plt.scatter(faiss_all, bleu_all, alpha=0.35)
-    plt.xlabel("Avg FAISS NN Distance (token-level)")
+    plt.scatter(attn_all, bleu_all, alpha=0.35)
+    plt.xlabel("Attention-Based Encoder Distance")
     plt.ylabel("BLEU")
-    plt.title("BLEU vs Encoder FAISS Similarity")
+    plt.title("BLEU vs Encoder Attention Similarity")
     plt.grid(True)
-    plt.savefig("bleu_vs_faiss.png", bbox_inches="tight")
+    plt.savefig("bleu_vs_attention.png", bbox_inches="tight")
 
     print("\nSaved:")
     print(" - bleu_vs_sigma.png")
-    print(" - bleu_vs_faiss.png")
+    print(" - bleu_vs_attention.png")
 
 
 if __name__ == "__main__":

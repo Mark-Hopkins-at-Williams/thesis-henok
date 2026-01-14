@@ -3,10 +3,10 @@
     "corpora": {
         "europarl": {
             "es": {
-                "lang_code": "eng_Latn",
-                "train": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/train.en",
-                "dev": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/dev.small.en",
-                "test": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/test.small.en",
+                "lang_code": "spa_Latn",
+                "train": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/train.es",
+                "dev": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/dev.small.es",
+                "test": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/test.small.es",
                 "permutation": 0
             },
             "es-enciphered": {

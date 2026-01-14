@@ -5,5 +5,7 @@
 #SBATCH -o logs/log_%j.out
 #SBATCH -e logs/log_%j.err
 #SBATCH --gres=gpu:1
-python est_v1.py --config configs/est2.json
+
+python est_v3.py --config configs/est2.json
+#python corrupt_gold_comparisons_w_attn.py
 
