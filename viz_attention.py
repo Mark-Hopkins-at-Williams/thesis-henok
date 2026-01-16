@@ -1,33 +1,20 @@
 import argparse
+from attention import SimpleAttention
+from configure import USE_CUDA
+from configure import harvest_language_codes
+from configure import initialize_tokenizer
+from configure import read_finetuning_params
+from corpora import MixtureOfBitexts
+from corpora import TokenizedMixtureOfBitexts
+from corpora import TokenizedMixtureOfTextAndGoalEncoding
 import json
-import os
-from pathlib import Path
-
-import torch
 import matplotlib
 import matplotlib.pyplot as plt
-import numpy as np
-
-from attention import SimpleAttention
-from configure import (
-    USE_CUDA,
-    create_experiment_dir,
-    create_permutations,
-    harvest_language_codes,
-    initialize_tokenizer,
-    read_finetuning_params,
-)
-
-from permutations import load_permutation_map
-
-from corpora import (
-    MixtureOfBitexts,
-    TokenizedMixtureOfBitexts,
-    TokenizedMixtureOfTextAndGoalEncoding,
-)
 from myutil import prepare_model_for_finetuning, logger
-from permutations import save_permutation_map
-from transformers import AutoConfig, AutoModelForSeq2SeqLM
+from pathlib import Path
+from permutations import load_permutation_map
+import torch
+from transformers import AutoModelForSeq2SeqLM
 
 matplotlib.use("Agg")
 
@@ -67,6 +54,7 @@ def visualize_attention_batch(
     enc_a,
     enc_b,
     mask_a,
+    mask_b,
     out_dir: Path,
     prefix: str,
     batch_idx: int,
@@ -80,7 +68,7 @@ def visualize_attention_batch(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     with torch.no_grad():
-        _, weights = attn(enc_a, enc_b, mask_a)
+        _, weights = attn(enc_a, enc_b, mask_a, mask_b)
         # weights: [B, T_a, T_b]
 
     B = weights.size(0)
@@ -97,8 +85,6 @@ def visualize_attention_batch(
 # -------------------------
 # Main driver
 # -------------------------
-
-from pathlib import Path
 
 
 def main():
@@ -144,7 +130,7 @@ def main():
     with torch.no_grad():
         batch = dev_mix.next_batch()
         while batch is not None:
-            sents, lang, goal_encodings = batch
+            sents, lang, goal_encodings, goal_attn_mask = batch
 
             sents = sents.to(encoder.device)
             goal_encodings = goal_encodings.to(encoder.device)
@@ -159,6 +145,7 @@ def main():
                 sent_encodings,
                 goal_encodings,
                 sents["attention_mask"],
+                goal_attn_mask,
                 out_dir=lang_dir,
                 prefix="sent_to_goal",
                 batch_idx=batch_idx,
@@ -168,6 +155,7 @@ def main():
                 attn,
                 goal_encodings,
                 sent_encodings,
+                goal_attn_mask,
                 sents["attention_mask"],
                 out_dir=lang_dir,
                 prefix="goal_to_sent",

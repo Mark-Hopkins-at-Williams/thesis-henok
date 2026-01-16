@@ -38,7 +38,7 @@ def plot_losses(train_x, train_y, dev_x, dev_y, out_path: str):
     plt.savefig(out_path)
 
 
-def finetune(model, train_data1, train_data2, dev_data, model_dir, ft_params):
+def finetune(model, train_data1, dev_data, model_dir, ft_params):
     logger(f"Training {model_dir}")
     model.save_pretrained(model_dir)
     optimizer = Adafactor(
@@ -59,20 +59,38 @@ def finetune(model, train_data1, train_data2, dev_data, model_dir, ft_params):
     for i in tqdm(range(ft_params.num_training_steps)):
         try:
             encoder.eval()
-            sents, lang, goal_encodings = train_data1.next_batch()
+            sents, lang, goal_encodings, goal_attn_mask = train_data1.next_batch()
+            sent_attn_mask = sents["attention_mask"].to(encoder.device)
             sents = sents.to(encoder.device)
             goal_encodings = goal_encodings.to(encoder.device)
+            goal_attn_mask = goal_attn_mask.to(encoder.device)
             sent_encodings = encoder(**sents).last_hidden_state
             if lang != ("europarl", "es"):
-                out1, _ = attn(sent_encodings, goal_encodings)
-                token_scores1 = 1 - F.cosine_similarity(sent_encodings, out1, dim=-1)
-                out2, _ = attn(goal_encodings, sent_encodings)
-                token_scores2 = 1 - F.cosine_similarity(goal_encodings, out2, dim=-1)
-                loss = (token_scores1.mean() + token_scores2.mean()) / 2.0
+                out1, _ = attn(
+                    sent_encodings, goal_encodings, sent_attn_mask, goal_attn_mask
+                )
+                # token_scores1 = 1 - F.cosine_similarity(sent_encodings, out1, dim=-1)
+                token_scores1 = (sent_encodings - out1) ** 2
+                token_scores1 = token_scores1 * sent_attn_mask
+                loss1 = token_scores1.sum() / sent_attn_mask.sum()
+                out2, _ = attn(
+                    goal_encodings,
+                    sent_encodings,
+                    goal_attn_mask,
+                    sents["attention_mask"],
+                )
+                # token_scores2 = 1 - F.cosine_similarity(goal_encodings, out2, dim=-1)
+                token_scores2 = (goal_encodings - out2) ** 2
+                token_scores2 = token_scores2 * goal_attn_mask
+                loss2 = token_scores2.sum() / goal_attn_mask.sum()
+                loss = (loss1 + loss2) / 2.0
             else:
-                loss = (
-                    1 - F.cosine_similarity(sent_encodings, goal_encodings, dim=-1)
-                ).mean()
+                # token_scores = 1 - F.cosine_similarity(
+                #     sent_encodings, goal_encodings, dim=-1
+                # )
+                token_scores = (sent_encodings - goal_encodings) ** 2
+                token_scores = token_scores * sent_attn_mask
+                loss = token_scores.sum() / sent_attn_mask.sum()
             loss.backward()
             train_losses.append(loss.item())
             optimizer.step()
@@ -102,16 +120,16 @@ def finetune(model, train_data1, train_data2, dev_data, model_dir, ft_params):
                 with torch.no_grad():
                     batch = dev_data.next_batch()
                     while batch is not None:
-                        sents, lang, goal_encodings = batch
+                        sents, lang, goal_encodings, goal_attn_mask = batch
+                        sent_attn_mask = sents["attention_mask"].to(encoder.device)
                         sents = sents.to(encoder.device)
                         goal_encodings = goal_encodings.to(encoder.device)
                         sent_encodings = encoder(**sents).last_hidden_state
-                        loss = (
-                            1
-                            - F.cosine_similarity(
-                                sent_encodings, goal_encodings, dim=-1
-                            )
-                        ).mean()
+                        token_scores = 1 - F.cosine_similarity(
+                            sent_encodings, goal_encodings, dim=-1
+                        )
+                        token_scores = token_scores * sent_attn_mask
+                        loss = token_scores.sum() / sent_attn_mask.sum()
                         if lang not in dev_losses:
                             dev_losses[lang] = []
                         dev_losses[lang].append(loss.item())
@@ -174,13 +192,6 @@ def main():
         permutation_map=pmap,
         use_alt_pad_token_for_tgt_lang=False,
     )
-    tokenized_train2 = TokenizedMixtureOfBitexts(
-        train_data,
-        tokenizer,
-        lang_codes=lang_codes,
-        permutation_map=pmap,
-        use_alt_pad_token_for_tgt_lang=False,
-    )
     tokenized_dev = TokenizedMixtureOfBitexts(
         dev_data,
         tokenizer,
@@ -202,7 +213,6 @@ def main():
     finetune(
         model,
         train_mix,
-        tokenized_train2,
         dev_mix,
         experiment_dir,
         ft_params,

@@ -1,8 +1,7 @@
 import random
-from typing import Dict, Tuple, List, Optional, Iterator, Callable
-from torch.utils.data import DataLoader, IterableDataset
 from tokenization import Tokenizer
-from myutil import logger
+from torch.utils.data import DataLoader, IterableDataset
+from typing import Dict, Tuple, List, Optional, Iterator, Callable
 
 CorpusId = Tuple[str, str]  # typedef
 
@@ -223,7 +222,7 @@ class TokenizedMixtureOfTextAndGoalEncoding:
             lang1_sents, lang2_sents, lang1, _ = batch
             lang2_sents = lang2_sents.to(self.encoder.device)
             encodings = self.encoder(**lang2_sents).last_hidden_state
-            return lang1_sents, lang1, encodings
+            return lang1_sents, lang1, encodings, lang2_sents["attention_mask"]
         else:
             return None
 

@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 
 class SimpleAttention(nn.Module):
-    def __init__(self, k=1):
+    def __init__(self, k=2):
         super().__init__()
         self.k = k
 
@@ -16,17 +16,14 @@ class SimpleAttention(nn.Module):
 
         scores = f_attn_mask.unsqueeze(1) * scores
         scores = e_attn_mask.unsqueeze(2) * scores
-        print(scores)
-        exit()
-        scores = (-100 * (e_attn_mask == 0).int()).unsqueeze(1) + scores
-        scores = (-100 * (f_attn_mask == 0).int()).unsqueeze(2) + scores
+        scores = (-100 * (f_attn_mask == 0).int()).unsqueeze(1) + scores
+        scores = (-100 * (e_attn_mask == 0).int()).unsqueeze(2) + scores
         weights = F.softmax(scores, dim=-1)
         output = torch.matmul(weights, V)
         return output, weights
 
 
 if __name__ == "__main__":
-    batch_size, seq_len, embed_dim = 2, 3, 5
 
     encoder_states_sent = torch.tensor(
         [
@@ -54,15 +51,12 @@ if __name__ == "__main__":
             [
                 [0.1, 0.2, 0.3, -0.5, -1.2],  # d_model = 5
                 [-0.3, -1.4, 1.2, -0.1, 0.7],
-                [0.4, 0.2, -0.6, 0.2, 0.5],
+                [-0.4, -0.2, 0.6, -0.2, -0.5],
                 [0.4, 0.2, -0.6, 0.2, 0.5],
             ],  # each sent has 4 token embeddings
         ]  # batch of 2 sents
     )
 
-    sigma = 0.04
-    # noise = sigma * torch.randn_like(encoder_states_goal)
-    # encoder_states_corrupted = (encoder_states_gold + noise).flip(0)
     print("sent:")
     print(encoder_states_sent)
     print("goal:")
@@ -80,10 +74,12 @@ if __name__ == "__main__":
     print("weights:")
     print(weights)
 
-    token_scores = 1 - F.cosine_similarity(
-        encoder_states_goal, out, dim=-1
-    )  # [seq_len]
-    loss = token_scores.mean()
+    token_scores = (
+        1 - F.cosine_similarity(encoder_states_sent, out, dim=-1)
+    ) * sent_attn_mask
+    print("token_scores:")
+    print(token_scores)
+    loss = token_scores.sum() / sent_attn_mask.sum()
     print(f"loss: {loss}")
     exit()
 
