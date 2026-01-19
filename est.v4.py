@@ -89,8 +89,8 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params):
             else:
                 token_scores = (sent_encodings - goal_encodings) ** 2
                 token_scores = token_scores * sent_attn_mask.unsqueeze(-1)
-                loss = token_scores1.sum() / (
-                    token_scores1.shape[-1] * sent_attn_mask.sum()
+                loss = token_scores.sum() / (
+                    token_scores.shape[-1] * sent_attn_mask.sum()
                 )
             loss.backward()
             train_losses.append(loss.item())
