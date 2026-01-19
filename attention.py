@@ -16,10 +16,10 @@ class SimpleAttention(nn.Module):
 
         scores = f_attn_mask.unsqueeze(1) * scores
         scores = e_attn_mask.unsqueeze(2) * scores
-        print(scores)
-        exit()
-        scores = (-100 * (e_attn_mask == 0).int()).unsqueeze(1) + scores
-        scores = (-100 * (f_attn_mask == 0).int()).unsqueeze(2) + scores
+
+        scores = (-100 * (e_attn_mask == 0).int()).unsqueeze(2) + scores
+        scores = (-100 * (f_attn_mask == 0).int()).unsqueeze(1) + scores
+
         weights = F.softmax(scores, dim=-1)
         output = torch.matmul(weights, V)
         return output, weights
@@ -34,10 +34,12 @@ if __name__ == "__main__":
                 [0.2, 0.4, 0.6, -0.2, -1.0],  # d_model = 5
                 [-0.3, -1.4, 1.2, -0.1, 0.7],
                 [0.4, 0.2, -0.6, 0.2, 0.5],
+                [0.4, 0.2, -0.6, 0.2, 0.5],
             ],
             [
                 [0.1, 0.2, 0.3, -0.5, -1.2],  # d_model = 5
                 [-0.3, -1.4, 1.2, -0.1, 0.7],
+                [0.4, 0.2, -0.6, 0.2, 0.5],
                 [0.4, 0.2, -0.6, 0.2, 0.5],
             ],  # each sent has 3 token embeddings
         ]  # batch of 2 sents
@@ -69,7 +71,7 @@ if __name__ == "__main__":
     print(encoder_states_goal)
 
     attn = SimpleAttention()
-    sent_attn_mask = torch.tensor([[1, 1, 1], [1, 1, 0]])
+    sent_attn_mask = torch.tensor([[1, 1, 1, 1], [1, 1, 1, 0]])
     goal_attn_mask = torch.tensor([[1, 1, 1, 1], [1, 1, 0, 0]])
     out, weights = attn(
         encoder_states_sent, encoder_states_goal, sent_attn_mask, goal_attn_mask

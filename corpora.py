@@ -223,7 +223,7 @@ class TokenizedMixtureOfTextAndGoalEncoding:
             lang1_sents, lang2_sents, lang1, _ = batch
             lang2_sents = lang2_sents.to(self.encoder.device)
             encodings = self.encoder(**lang2_sents).last_hidden_state
-            return lang1_sents, lang1, encodings
+            return lang1_sents, lang2_sents, lang1, encodings
         else:
             return None
 
