@@ -1,7 +1,7 @@
 import json
 
 BASE_DIR = "experiments"
-EXP_DIR = "enciphered_spa_to_eng-v11"
+EXP_DIR = "enciphered_spa_to_spa-v6"
 
 
 with open(f"{BASE_DIR}/{EXP_DIR}/translations.json") as reader:

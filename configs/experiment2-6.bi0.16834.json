@@ -1,0 +1,38 @@
+{
+    "model_dir": "experiments/exp2-6-bi0-16834",
+    "corpora": {
+        "europarl": {
+            "en": {
+                "lang_code": "eng_Latn",
+                "train": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/train.en",
+                "dev": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/dev.en",
+                "test": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/test.en",
+                "permutation": 0
+            },
+            "de": {
+                "lang_code": "tsn_Latn",
+                "train": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/train.de",
+                "dev": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/dev.de",
+                "test": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/test.de",
+                "permutation": 1
+            }
+        }
+    },
+    "bitexts": [
+        {
+            "corpus": "europarl",
+            "src": "en",
+            "tgt": "de",
+            "train_lines": [
+                0,
+                16834
+            ]
+        }
+    ],
+    "finetuning_parameters": {
+        "base_model": "facebook/nllb-200-distilled-600M",
+        "batch_size": 64,
+        "num_steps": 60000,
+        "freeze_encoder": true
+    }
+}

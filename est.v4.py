@@ -65,33 +65,62 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params):
             goal_encodings = goal_encodings.to(encoder.device)
             goal_attn_mask = goal_attn_mask.to(encoder.device)
             sent_encodings = encoder(**sents).last_hidden_state
-            if lang != ("europarl", "es"):
-                out1, _ = attn(
-                    sent_encodings, goal_encodings, sent_attn_mask, goal_attn_mask
-                )
-                token_scores1 = (sent_encodings - out1) ** 2
-                token_scores1 = token_scores1 * sent_attn_mask.unsqueeze(-1)
-                loss1 = token_scores1.sum() / (
-                    token_scores1.shape[-1] * sent_attn_mask.sum()
-                )
-                out2, _ = attn(
-                    goal_encodings,
-                    sent_encodings,
-                    goal_attn_mask,
-                    sents["attention_mask"],
-                )
-                token_scores2 = (goal_encodings - out2) ** 2
-                token_scores2 = token_scores2 * goal_attn_mask.unsqueeze(-1)
-                loss2 = token_scores2.sum() / (
-                    token_scores2.shape[-1] * goal_attn_mask.sum()
-                )
-                loss = (loss1 + loss2) / 2.0  # TODO: try geometric mean
+            if i > 20000:
+                if lang != ("europarl", "es"):
+                    out1, _ = attn(
+                        sent_encodings, goal_encodings, sent_attn_mask, goal_attn_mask
+                    )
+                    token_scores1 = (sent_encodings - out1) ** 2
+                    token_scores1 = token_scores1 * sent_attn_mask.unsqueeze(-1)
+                    loss1 = token_scores1.sum() / (
+                        token_scores1.shape[-1] * sent_attn_mask.sum()
+                    )
+                    out2, _ = attn(
+                        goal_encodings,
+                        sent_encodings,
+                        goal_attn_mask,
+                        sents["attention_mask"],
+                    )
+                    token_scores2 = (goal_encodings - out2) ** 2
+                    token_scores2 = token_scores2 * goal_attn_mask.unsqueeze(-1)
+                    loss2 = token_scores2.sum() / (
+                        token_scores2.shape[-1] * goal_attn_mask.sum()
+                    )
+                    loss = (loss1 + loss2) / 2.0  # TODO: try geometric mean
+                else:
+                    token_scores = (sent_encodings - goal_encodings) ** 2
+                    token_scores = token_scores * sent_attn_mask.unsqueeze(-1)
+                    loss = token_scores.sum() / (
+                        token_scores.shape[-1] * sent_attn_mask.sum()
+                    )
             else:
-                token_scores = (sent_encodings - goal_encodings) ** 2
-                token_scores = token_scores * sent_attn_mask.unsqueeze(-1)
-                loss = token_scores.sum() / (
-                    token_scores.shape[-1] * sent_attn_mask.sum()
-                )
+                if lang != ("europarl", "es"):
+                    out1, _ = attn(
+                        sent_encodings, goal_encodings, sent_attn_mask, goal_attn_mask
+                    )
+                    token_scores1 = 1 - F.cosine_similarity(
+                        sent_encodings, out1, dim=-1
+                    )
+                    token_scores1 = token_scores1 * sent_attn_mask
+                    loss1 = token_scores1.sum() / sent_attn_mask.sum()
+                    out2, _ = attn(
+                        goal_encodings,
+                        sent_encodings,
+                        goal_attn_mask,
+                        sents["attention_mask"],
+                    )
+                    token_scores2 = 1 - F.cosine_similarity(
+                        goal_encodings, out2, dim=-1
+                    )
+                    token_scores2 = token_scores2 * goal_attn_mask
+                    loss2 = token_scores2.sum() / goal_attn_mask.sum()
+                    loss = (loss1 + loss2) / 2.0
+                else:
+                    token_scores = 1 - F.cosine_similarity(
+                        sent_encodings, goal_encodings, dim=-1
+                    )
+                    token_scores = token_scores * sent_attn_mask
+                    loss = token_scores.sum() / sent_attn_mask.sum()
             loss.backward()
             train_losses.append(loss.item())
             optimizer.step()

@@ -1,0 +1,41 @@
+{
+    "model_dir": "experiments/french-training",
+    "finetuning_parameters": {
+        "base_model": "facebook/nllb-200-distilled-600M",
+        "finetune": false,
+        "freeze_encoder": false,
+        "freeze_decoder": false,
+        "batch_size": 32,
+        "num_steps": 219995,
+        "patience": 1000000000
+    },
+    "corpora": {
+        "fr-eng": {
+            "eng": {
+                "lang_code": "eng_Latn",
+                "train": "/mnt/storage/swexler/thesis-wexler/examples/french-data-7-mil/organized/train.eng",
+                "dev": "/mnt/storage/swexler/thesis-wexler/examples/french-model_10_28_25/fr-en/dev.eng",
+                "test": "/mnt/storage/swexler/thesis-wexler/examples/french-model_10_28_25/fr-en/test.eng",
+                "permutation": 0
+            },
+            "fr": {
+                "lang_code": "fra_Latn",
+                "train": "/mnt/storage/swexler/thesis-wexler/examples/french-data-7-mil/organized/train.fr",
+                "dev": "/mnt/storage/swexler/thesis-wexler/examples/french-model_10_28_25/fr-en/dev.fr",
+                "test": "/mnt/storage/swexler/thesis-wexler/examples/french-model_10_28_25/fr-en/test.fr",
+                "permutation": 0
+            }
+        }
+    },
+    "bitexts": [
+        {
+            "corpus": "fr-eng",
+            "src": "eng",
+            "tgt": "fr",
+            "train_lines": [
+                0,
+                8000000
+            ]
+        }
+    ]
+}

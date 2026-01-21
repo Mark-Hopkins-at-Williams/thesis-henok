@@ -15,6 +15,7 @@ from pathlib import Path
 from permutations import load_permutation_map
 import torch
 from transformers import AutoModelForSeq2SeqLM
+import torch.nn.functional as F
 
 matplotlib.use("Agg")
 
@@ -134,8 +135,19 @@ def main():
 
             sents = sents.to(encoder.device)
             goal_encodings = goal_encodings.to(encoder.device)
+            print("goal:")
+            print(goal_encodings[0][6])
+
+            scaled_goal = goal_encodings * (0.0728 / 0.4713)
+            print("scaled goal:")
+            print(scaled_goal[0][6])
 
             sent_encodings = encoder(**sents).last_hidden_state
+            print("sent:")
+            print(sent_encodings[0][6])
+            print(
+                F.cosine_similarity(sent_encodings[0][0], goal_encodings[0][0], dim=0)
+            )
 
             lang_dir = viz_root / f"{lang[0]}_{lang[1]}"
             lang_dir.mkdir(parents=True, exist_ok=True)

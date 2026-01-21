@@ -168,7 +168,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate finetuning experiment.")
     parser.add_argument("--dir", type=str, required=True, help="Experiment directory.")
     args = parser.parse_args()
-    # evaluate_experiment(args.dir)
-    evaluate_model(
-        "facebook/nllb-200-distilled-600M", "examples/nllb_seed_config_small.json"
-    )
+    evaluate_experiment(args.dir)
+    # evaluate_model(
+    #    "facebook/nllb-200-distilled-600M", "examples/nllb_seed_config_small.json"
+    # )
