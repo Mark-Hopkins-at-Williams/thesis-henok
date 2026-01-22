@@ -1,7 +1,9 @@
 import random
 from tokenization import Tokenizer
+import torch
 from torch.utils.data import DataLoader, IterableDataset
 from typing import Dict, Tuple, List, Optional, Iterator, Callable
+from transformers.tokenization_utils_base import BatchEncoding
 
 CorpusId = Tuple[str, str]  # typedef
 
@@ -176,12 +178,14 @@ class TokenizedMixtureOfBitexts:
         lang_codes: Dict[CorpusId, str],
         permutation_map: Dict[CorpusId, Callable[[int], int]] = dict(),
         use_alt_pad_token_for_tgt_lang=True,
+        permutation_prob=1.0,
     ):
         self.mixture_of_bitexts = mixture_of_bitexts
         self.tokenizer = tokenizer
         self.lang_codes = lang_codes
         self.permutation_map = permutation_map
         self.use_alt_pad_token_for_tgt_lang = use_alt_pad_token_for_tgt_lang
+        self.permutation_prob = permutation_prob
 
     def _tokenize(self, sents: List[str], corpus: CorpusId, alt_pad_token: int = None):
         tokens = self.tokenizer(sents, lang_code=self.lang_codes[corpus])
@@ -190,7 +194,16 @@ class TokenizedMixtureOfBitexts:
             tokens.input_ids[tokens.input_ids == pad_token_id] = alt_pad_token
         if corpus in self.permutation_map:  # apply the permutation
             p = self.permutation_map[corpus]
-            tokens.input_ids.apply_(p)  # modifies in-place
+            permuted_input_ids = tokens.input_ids.clone()
+            permuted_input_ids.apply_(p)  # modifies in-place
+            random_mask = (
+                torch.rand_like(permuted_input_ids, dtype=torch.float32)
+                <= self.permutation_prob
+            ).int()
+            print(random_mask)
+            tokens["input_ids"] = (
+                permuted_input_ids * random_mask + tokens.input_ids * (1 - random_mask)
+            )
         return tokens
 
     def next_batch(self):

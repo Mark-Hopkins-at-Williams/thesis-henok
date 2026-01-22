@@ -447,10 +447,32 @@ class TestCorpora(unittest.TestCase):
             "facebook/nllb-200-distilled-600M"
         )
         tmotge = TokenizedMixtureOfTextAndGoalEncoding(tmob, model.model.encoder)
-        lang1_sents, lang1, goal_encodings = tmotge.next_batch()
-        print(lang1_sents["input_ids"])
-        print(lang1)
-        print(goal_encodings)
+        lang1_sents, lang1, goal_encodings, goal_mask = tmotge.next_batch()
+        # print(lang1_sents["input_ids"])
+        # print(lang1)
+        # print(goal_encodings)
+
+    def test_tokenized_mixture_of_bitexts_w_selective_permutations(self):
+        text_files = {
+            ("test", "eng"): "test_files/lang1.txt",
+            ("test", "fra"): "test_files/lang2.txt",
+        }
+        lang_codes = {("test", "eng"): "eng_Latn", ("test", "fra"): "fra_Latn"}
+        mix = MixtureOfBitexts.create_from_files(
+            text_files, [(("test", "eng"), ("test", "fra"), None)], 3
+        )
+        tokenizer = NllbTokenizer("600M")
+        pmap = {("test", "fra"): lambda x: x + 2}
+        tmob = TokenizedMixtureOfBitexts(
+            mix,
+            tokenizer,
+            lang_codes=lang_codes,
+            permutation_map=pmap,
+            permutation_prob=0.9,
+        )
+        lang1_batch, lang2_batch, _, _ = tmob.next_batch()
+        print(lang1_batch)
+        print(lang2_batch)
 
 
 if __name__ == "__main__":
