@@ -64,6 +64,10 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params):
             sents = sents.to(encoder.device)
             goal_encodings = goal_encodings.to(encoder.device)
             goal_attn_mask = goal_attn_mask.to(encoder.device)
+            # Cross-entropy loss
+            # outputs = model(**sents, labels=sents["input_ids"])
+            # ce_loss = outputs.loss
+
             sent_encodings = encoder(**sents).last_hidden_state
 
             out1, _ = attn(
@@ -86,7 +90,7 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params):
             ) ** 2
             token_norm_diffs = token_norm_diffs * sent_attn_mask
             loss3 = token_norm_diffs.sum() / sent_attn_mask.sum()
-            loss = loss3 + ((loss1 + loss2) / 2.0)
+            loss = loss3 + ((loss1 + loss2) / 2.0)  # + ce_loss
 
             loss.backward()
             train_losses.append(loss.item())
@@ -188,6 +192,7 @@ def main():
         lang_codes=lang_codes,
         permutation_map=pmap,
         use_alt_pad_token_for_tgt_lang=False,
+        permutation_prob=0.85,
     )
     tokenized_dev = TokenizedMixtureOfBitexts(
         dev_data,
