@@ -200,7 +200,6 @@ class TokenizedMixtureOfBitexts:
                 torch.rand_like(permuted_input_ids, dtype=torch.float32)
                 <= self.permutation_prob
             ).int()
-            print(random_mask)
             tokens["input_ids"] = (
                 permuted_input_ids * random_mask + tokens.input_ids * (1 - random_mask)
             )
