@@ -1,7 +1,12 @@
 import json
 import unittest
-from corpora import Bitext, MultifileBitext, MixtureOfBitexts, TokenizedMixtureOfBitexts
-from corpora import TokenizedMixtureOfTextAndGoalEncoding
+from corpora_kdswch import (
+    Bitext,
+    MultifileBitext,
+    MixtureOfBitexts,
+    TokenizedMixtureOfBitexts,
+)
+from corpora_kdswch import TokenizedMixtureOfTextAndGoalEncoding
 from torch import tensor
 from tokenization import NllbTokenizer
 from transformers import AutoModelForSeq2SeqLM
@@ -269,6 +274,7 @@ class TestCorpora(unittest.TestCase):
         self.assertIn(batch, [expected1, expected2])
 
     def test_tokenized_mixture_of_bitexts(self):
+
         text_files = {
             ("test", "eng"): "test_files/lang1.txt",
             ("test", "fra"): "test_files/lang2.txt",
@@ -308,12 +314,14 @@ class TestCorpora(unittest.TestCase):
                 [1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
             ]
         )
+
         self.assertEqual(
             lang1_batch["input_ids"].tolist(), expected_lang1_token_ids.tolist()
         )
         self.assertEqual(
             lang2_batch["input_ids"].tolist(), expected_lang2_token_ids.tolist()
         )
+
         self.assertEqual(
             lang1_batch["attention_mask"].tolist(), expected_lang1_mask.tolist()
         )
@@ -473,6 +481,59 @@ class TestCorpora(unittest.TestCase):
         lang1_batch, lang2_batch, _, _ = tmob.next_batch()
         print(lang1_batch)
         print(lang2_batch)
+
+    def test_kdswch_tokenized_mixture_of_bitexts(self):
+        text_files = {
+            ("test", "eng"): "test_files/lang1.txt",
+            ("test", "fra"): "test_files/lang2.txt",
+        }
+        lang_codes = {("test", "eng"): "eng_Latn", ("test", "fra"): "fra_Latn"}
+        mix = MixtureOfBitexts.create_from_files(
+            text_files, [(("test", "eng"), ("test", "fra"), None)], 3
+        )
+        tokenizer = NllbTokenizer("600M")
+        tmob = TokenizedMixtureOfBitexts(mix, tokenizer, lang_codes=lang_codes)
+        lang1_batch, lang2_batch, _, _ = tmob.next_batch()
+        expected_lang1_token_ids = tensor(
+            [
+                [256047, 1617, 7875, 228, 55501, 349, 227879, 248075, 2],
+                [256047, 11873, 272, 22665, 9, 28487, 248075, 2, 1],
+                [256047, 13710, 18379, 43583, 2299, 248075, 2, 1, 1],
+            ]
+        )
+        expected_lang2_token_ids = tensor(
+            [
+                [256057, 1181, 32779, 9, 170684, 356, 82, 324, 40284, 248075, 2],
+                [256057, 19945, 6622, 159, 68078, 248075, 2, -100, -100, -100, -100],
+                [256057, 21422, 5665, 138, 1166, 96236, 248075, 2, -100, -100, -100],
+            ]
+        )
+        expected_lang1_mask = tensor(
+            [
+                [1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1, 1, 0],
+                [1, 1, 1, 1, 1, 1, 1, 0, 0],
+            ]
+        )
+        expected_lang2_mask = tensor(
+            [
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+                [1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+            ]
+        )
+        self.assertEqual(
+            lang1_batch["input_ids"].tolist(), expected_lang1_token_ids.tolist()
+        )
+        self.assertEqual(
+            lang2_batch["input_ids"].tolist(), expected_lang2_token_ids.tolist()
+        )
+        self.assertEqual(
+            lang1_batch["attention_mask"].tolist(), expected_lang1_mask.tolist()
+        )
+        self.assertEqual(
+            lang2_batch["attention_mask"].tolist(), expected_lang2_mask.tolist()
+        )
 
 
 if __name__ == "__main__":

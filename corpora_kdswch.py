@@ -180,7 +180,9 @@ class TokenizedMixtureOfBitexts:
         mixture_of_bitexts: MixtureOfBitexts,
         tokenizer: Tokenizer,
         lang_codes: Dict[CorpusId, str],
-        code_switch_map: Dict[CorpusId, Callable[[List[int], List[int]], List[int]]] = dict(),
+        code_switch_map: Dict[
+            CorpusId, Callable[[List[int], List[int]], List[int]]
+        ] = dict(),
         use_alt_pad_token_for_tgt_lang=True,
         permutation_prob=1.0,
     ):
@@ -191,9 +193,11 @@ class TokenizedMixtureOfBitexts:
         self.use_alt_pad_token_for_tgt_lang = use_alt_pad_token_for_tgt_lang
         self.permutation_prob = permutation_prob
 
-    def _tokenize(self, sents: List[str], corpus: CorpusId):
+    def _tokenize(self, sents: List[str], corpus: CorpusId, alt_pad_token: int = None):
         tokens_list = [
-            self.tokenizer([sent], lang_code=self.lang_codes[corpus])["input_ids"][0].tolist()
+            self.tokenizer([sent], lang_code=self.lang_codes[corpus])["input_ids"][
+                0
+            ].tolist()
             for sent in sents
         ]
 
@@ -203,9 +207,13 @@ class TokenizedMixtureOfBitexts:
             for idx, tok_ids in enumerate(tokens_list):
                 tgt_ids = tok_ids.copy()
                 # Create a random mask based on permutation_prob
-                mask = (torch.rand(len(tok_ids)) <= self.permutation_prob).int().tolist()
+                mask = (
+                    (torch.rand(len(tok_ids)) <= self.permutation_prob).int().tolist()
+                )
                 # Build replacement plans
-                plans = build_replacement_plans(tok_ids, tgt_ids, alignment={}, random_mask=mask)
+                plans = build_replacement_plans(
+                    tok_ids, tgt_ids, alignment={}, random_mask=mask
+                )
                 plans = filter_overlapping_plans(plans)
                 replaced = apply_replacements(tok_ids, plans)
                 new_tokens_list.append(replaced)
@@ -213,8 +221,8 @@ class TokenizedMixtureOfBitexts:
 
         # Pad sequences and create attention mask
         pad_id = self.tokenizer.get_special_tokens()["<pad>"]
-        if self.use_alt_pad_token_for_tgt_lang:
-            pad_id = -100
+        if alt_pad_token is not None:
+            pad_id = alt_pad_token
         return collate_and_pad(tokens_list, pad_id)
 
     def next_batch(self):
@@ -223,7 +231,7 @@ class TokenizedMixtureOfBitexts:
             return None
         lang1_sents, lang2_sents, lang1, lang2 = batch
         lang1_tokenized = self._tokenize(lang1_sents, lang1)
-        lang2_tokenized = self._tokenize(lang2_sents, lang2)
+        lang2_tokenized = self._tokenize(lang2_sents, lang2, alt_pad_token=-100)
         return lang1_tokenized, lang2_tokenized, lang1, lang2
 
     def restart(self):

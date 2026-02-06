@@ -181,7 +181,7 @@ def build_fast_align_dict_from_raw(
     tokenizer,
     src_lang: str,
     tgt_lang: str,
-    fast_align_bin: str = "fast_align",
+    fast_align_bin: str = "/mnt/storage/henok/thesis-henok/fast_align/build/fast_align",
 ) -> Dict[int, Dict[int, List[int]]]:
     """
     Returns:
@@ -218,8 +218,10 @@ def build_fast_align_dict_from_raw(
                     continue
 
                 src_toks = tokenize_line(src_line, src_lang)
-                tgt_toks = tokenize_line(tgt_line, tgt_lang)
                 print(i)
+                print(src_toks)
+                tgt_toks = tokenize_line(tgt_line, tgt_lang)
+                print(tgt_toks)
                 i += 1
 
                 tmp.write(" ".join(src_toks) + " ||| " + " ".join(tgt_toks) + "\n")
@@ -227,7 +229,7 @@ def build_fast_align_dict_from_raw(
     # Step 2: run fast_align
     proc = subprocess.run(
         [
-            "/mnt/storage/henok/thesis-henok/fast_align/build/fast_align",
+            fast_align_bin,
             "-i",
             tmp_path,
             "-d",
@@ -250,3 +252,18 @@ def build_fast_align_dict_from_raw(
         alignments[sent_id] = dict(sent_align)
 
     return alignments
+
+
+if __name__ == "__main__":
+    from tokenization import NllbTokenizer
+
+    tokenizer = NllbTokenizer("600M")
+    map = build_fast_align_dict_from_raw(
+        "test_files/lang1.txt",
+        "test_files/lang2.txt",
+        tokenizer,
+        "eng_Latn",
+        "fra_Latn",
+    )
+    for key in map:
+        print(f"{key}: {map[key]}")
