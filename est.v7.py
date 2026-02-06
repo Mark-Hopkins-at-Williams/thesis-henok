@@ -5,8 +5,9 @@ from configure import create_permutations
 from configure import harvest_language_codes
 from configure import initialize_tokenizer
 from configure import read_finetuning_params
-from corpora import MixtureOfBitexts, TokenizedMixtureOfBitexts
-from corpora import TokenizedMixtureOfTextAndGoalEncoding
+from corpora_kdswch import MixtureOfBitexts, TokenizedMixtureOfBitexts
+from corpora_kdswch import TokenizedMixtureOfTextAndGoalEncoding
+from extract_tok_utils import build_fast_align_dict_from_raw
 import json
 import matplotlib
 import matplotlib.pyplot as plt
@@ -43,11 +44,17 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params):
         encoder.eval()
         sents, lang, goal_encodings, goal_attn_mask = batch
         sent_attn_mask = sents["attention_mask"].to(encoder.device)
-        sents = sents.to(encoder.device)
+        # Henok Change to code switch
+        sents = {k: v.to(encoder.device) for k, v in sents.items()}
         goal_encodings = goal_encodings.to(encoder.device)
         goal_attn_mask = goal_attn_mask.to(encoder.device)
         sent_encodings = encoder(**sents).last_hidden_state
-        if lang != ("europarl", "es"):
+
+        # Cross-entropy loss
+        # outputs = model(**sents, labels=sents["input_ids"])
+        # ce_loss = outputs.loss
+
+        if lang != ("europarl", "en"):
             out1, _ = attn(
                 sent_encodings, goal_encodings, sent_attn_mask, goal_attn_mask
             )
@@ -74,7 +81,7 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params):
                 )
                 ** 2
             )
-            loss = loss4 + ((loss1 + loss2) / 2.0)
+            loss = loss4 + ((loss1 + loss2) / 2.0)  # + ce_loss
         else:
             token_scores = 1 - F.cosine_similarity(
                 sent_encodings, goal_encodings, dim=-1
@@ -193,20 +200,36 @@ def main():
     train_data = MixtureOfBitexts.create_from_config(
         config, "train", only_once_thru=False
     )
+    
     dev_data = MixtureOfBitexts.create_from_config(config, "dev", only_once_thru=True)
+
+    src_cfg = config["corpora"]["europarl"]["es-enciphered"]
+    tgt_cfg = config["corpora"]["europarl"]["en"]
+
+    alignment_map = build_fast_align_dict_from_raw(
+        src_file=src_cfg["train"],
+        tgt_file=tgt_cfg["train"],
+        tokenizer=tokenizer,
+        src_lang=src_cfg["lang_code"],     # tsn_Latn
+        tgt_lang=tgt_cfg["lang_code"],     # eng_Latn
+    )
+    print(alignment_map)
+    
     tokenized_train = TokenizedMixtureOfBitexts(
         train_data,
         tokenizer,
         lang_codes=lang_codes,
-        permutation_map=pmap,
+        code_switch_map=alignment_map,
+        # permutation_map=pmap,
         use_alt_pad_token_for_tgt_lang=False,
     )
     tokenized_dev = TokenizedMixtureOfBitexts(
         dev_data,
         tokenizer,
         lang_codes=lang_codes,
-        permutation_map=pmap,
+        # permutation_map=pmap,
         use_alt_pad_token_for_tgt_lang=False,
+        permutation_prob=0.9,
     )
 
     static_model = prepare_model_for_finetuning(ft_params)

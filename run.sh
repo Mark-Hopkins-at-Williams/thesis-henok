@@ -5,4 +5,4 @@
 #SBATCH -o logs/log_%j.out
 #SBATCH -e logs/log_%j.err
 #SBATCH --gres=gpu:1
-python est.v6.py --config configs/est.config.json
+python est.v7.py --config configs/est.config_eng_tsn.json

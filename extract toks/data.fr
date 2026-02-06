@@ -1,0 +1,5 @@
+Ceci est une phrase de test.
+J’aime étudier l’informatique.
+Il fait très beau aujourd’hui.
+Nous construisons un modèle multilingue.
+L’alignement des tokens est important pour le TAL.

@@ -1,0 +1,5 @@
+▁Ceci ▁est ▁une ▁phrase ▁de ▁test . ||| ▁This ▁is ▁a ▁test ▁sentence .
+▁J aime ▁étudi er ▁l inform atique . ||| ▁I ▁like ▁study ing ▁computer ▁science .
+▁Il ▁fait ▁très ▁beau ▁aujourd hui . ||| ▁The ▁weather ▁is ▁very ▁nice ▁today .
+▁Nous ▁constru is ons ▁un ▁modèle ▁mul til ing ue . ||| ▁We ▁are ▁building ▁a ▁mul til ingu al ▁model .
+▁L ali gn ement ▁des ▁tok ens ▁est ▁important ▁pour ▁le ▁T AL . ||| ▁Tok en ▁alig n ment ▁is ▁important ▁for ▁N LP .

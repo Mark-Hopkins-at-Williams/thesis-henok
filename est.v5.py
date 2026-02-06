@@ -59,11 +59,16 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params):
     for i in tqdm(range(ft_params.num_training_steps)):
         try:
             encoder.eval()
+            model.model.decoder.train()
             sents, lang, goal_encodings, goal_attn_mask = train_data1.next_batch()
             sent_attn_mask = sents["attention_mask"].to(encoder.device)
             sents = sents.to(encoder.device)
             goal_encodings = goal_encodings.to(encoder.device)
             goal_attn_mask = goal_attn_mask.to(encoder.device)
+            # Cross-entropy loss
+            # outputs = model(**sents, labels=sents["input_ids"])
+            # ce_loss = outputs.loss
+
             sent_encodings = encoder(**sents).last_hidden_state
             if lang != ("europarl", "es"):
                 out1, _ = attn(
@@ -86,7 +91,7 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params):
                 ) ** 2
                 token_norm_diffs = token_norm_diffs * goal_attn_mask
                 loss3 = token_norm_diffs.sum() / goal_attn_mask.sum()
-                loss = loss3 + ((loss1 + loss2) / 2.0)
+                align_loss = 0.5 * loss3 + ((loss1 + loss2) / 2.0)
             else:
                 token_scores = 1 - F.cosine_similarity(
                     sent_encodings, goal_encodings, dim=-1
@@ -99,7 +104,8 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params):
                 ) ** 2
                 token_norm_diffs = token_norm_diffs * sent_attn_mask
                 loss2 = token_norm_diffs.sum() / sent_attn_mask.sum()
-                loss = loss1 + loss2
+                align_loss = loss1 + 0.5 * loss2
+            loss = align_loss  # + ce_loss
             loss.backward()
             train_losses.append(loss.item())
             optimizer.step()

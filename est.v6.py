@@ -64,7 +64,7 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params):
             sents = sents.to(encoder.device)
             goal_encodings = goal_encodings.to(encoder.device)
             goal_attn_mask = goal_attn_mask.to(encoder.device)
-            # Cross-entropy loss
+            #Cross-entropy loss
             # outputs = model(**sents, labels=sents["input_ids"])
             # ce_loss = outputs.loss
 
@@ -86,11 +86,11 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params):
             token_scores2 = token_scores2 * goal_attn_mask
             loss2 = token_scores2.sum() / goal_attn_mask.sum()
             token_norm_diffs = (
-                torch.norm(sent_encodings, dim=-1) - torch.norm(goal_encodings, dim=-1)
+                torch.norm(out2, dim=-1) - torch.norm(goal_encodings, dim=-1)
             ) ** 2
-            token_norm_diffs = token_norm_diffs * sent_attn_mask
-            loss3 = token_norm_diffs.sum() / sent_attn_mask.sum()
-            loss = loss3 + ((loss1 + loss2) / 2.0)  # + ce_loss
+            token_norm_diffs = token_norm_diffs * goal_attn_mask
+            loss3 = token_norm_diffs.sum() / goal_attn_mask.sum()
+            loss = loss3 + ((loss1 + loss2) / 2.0)  # + ce_loss 
 
             loss.backward()
             train_losses.append(loss.item())
@@ -126,11 +126,30 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params):
                         sents = sents.to(encoder.device)
                         goal_encodings = goal_encodings.to(encoder.device)
                         sent_encodings = encoder(**sents).last_hidden_state
-                        token_scores = 1 - F.cosine_similarity(
-                            sent_encodings, goal_encodings, dim=-1
+                        
+
+                        
+                        out1, _ = attn(
+                            sent_encodings, goal_encodings, sent_attn_mask, goal_attn_mask
                         )
-                        token_scores = token_scores * sent_attn_mask
-                        loss = token_scores.sum() / sent_attn_mask.sum()
+                        token_scores1 = 1 - F.cosine_similarity(sent_encodings, out1, dim=-1)
+                        token_scores1 = token_scores1 * sent_attn_mask
+                        loss1 = token_scores1.sum() / sent_attn_mask.sum()
+
+                        out2, _ = attn(
+                            goal_encodings, sent_encodings, goal_attn_mask,sent_attn_mask,
+                        )
+                        token_scores2 = 1 - F.cosine_similarity(goal_encodings, out2, dim=-1)
+                        token_scores2 = token_scores2 * goal_attn_mask
+                        loss2 = token_scores2.sum() / goal_attn_mask.sum()
+
+                        token_norm_diffs = (
+                            torch.norm(out2, dim=-1) - torch.norm(goal_encodings, dim=-1)
+                        ) ** 2
+                        token_norm_diffs = token_norm_diffs * goal_attn_mask
+                        loss3 = token_norm_diffs.sum() / goal_attn_mask.sum()
+                        loss = loss3 + ((loss1 + loss2) / 2.0)
+
                         if lang not in dev_losses:
                             dev_losses[lang] = []
                         dev_losses[lang].append(loss.item())
