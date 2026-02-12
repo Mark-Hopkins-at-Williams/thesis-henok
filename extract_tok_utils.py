@@ -218,10 +218,10 @@ def build_fast_align_dict_from_raw(
                     continue
 
                 src_toks = tokenize_line(src_line, src_lang)
-                print(i)
-                print(src_toks)
+                # print(i)
+                # print(src_toks)
                 tgt_toks = tokenize_line(tgt_line, tgt_lang)
-                print(tgt_toks)
+                # print(tgt_toks)
                 i += 1
 
                 tmp.write(" ".join(src_toks) + " ||| " + " ".join(tgt_toks) + "\n")
