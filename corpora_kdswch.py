@@ -212,16 +212,22 @@ class TokenizedMixtureOfBitexts:
                     (torch.rand(len(tok_ids)) <= self.permutation_prob).int().tolist()
                 )
                 print(mask)
+                print(self.code_switch_map[corpus])
                 # Build replacement plans
                 plans = build_replacement_plans(
                     tok_ids,
                     tgt_ids,
-                    alignment=self.code_switch_map[corpus],
+                    alignment=self.code_switch_map[corpus][idx],
                     random_mask=mask,
                 )
                 print(plans)
+
                 plans = filter_overlapping_plans(plans)
+                print(plans)
+
                 replaced = apply_replacements(tok_ids, plans)
+                print(replaced)
+                exit()
                 new_tokens_list.append(replaced)
             tokens_list = new_tokens_list
 
