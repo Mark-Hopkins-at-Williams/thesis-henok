@@ -1,6 +1,7 @@
 import random
 import torch
 from torch.utils.data import DataLoader, IterableDataset
+
 from typing import Dict, Tuple, List, Optional, Iterator, Callable
 from tokenization import Tokenizer
 from extract_tok_utils import (
@@ -9,6 +10,9 @@ from extract_tok_utils import (
     apply_replacements,
     collate_and_pad,
 )
+from torch.nn.utils.rnn import pad_sequence
+
+from align import extract_phrase_pairs
 
 CorpusId = Tuple[str, str]  # typedef
 
@@ -73,62 +77,156 @@ class Bitext(IterableDataset):
         )
 
 
+class TokenizedBitext:
+    def __init__(self, bitext, tokenizer, lang1_code, lang2_code):
+        self.bitext = bitext
+        self.tokenizer = tokenizer
+        self.lang1_code = lang1_code
+        self.lang2_code = lang2_code
+
+    def __iter__(self):
+        bitext_iter = iter(self.bitext)
+        for text1, text2 in bitext_iter:
+            yield self._tokenize(text1, text2)
+
+    def _tokenize(self, lang1_text, lang2_text):
+        lang1_tokens = (
+            self.tokenizer(lang1_text, lang_code=self.lang1_code)["input_ids"]
+            .squeeze()
+            .tolist()
+        )
+        lang2_tokens = (
+            self.tokenizer(lang2_text, lang_code=self.lang2_code)["input_ids"]
+            .squeeze()
+            .tolist()
+        )
+        return (lang1_tokens, lang2_tokens)
+
+
+class CodeswitchedBitext:
+    def __init__(
+        self,
+        tokenized_bitext,
+        alignment,
+        randomizer=lambda ls: random.randint(0, len(ls) - 1),
+    ):
+        self.tokenized_bitext = tokenized_bitext
+        self.alignment = alignment
+        self.randomizer = randomizer
+
+    def __iter__(self):
+        bitext_iter = iter(self.tokenized_bitext)
+        for i, (toks1, toks2) in enumerate(bitext_iter):
+            alignment = self.alignment[i]
+            pairs = extract_phrase_pairs(toks1, toks2, alignment)
+            indices = list(range(len(pairs)))
+            index_chosen = False
+            while len(indices) > 0 and not index_chosen:
+                j = self.randomizer(indices)
+                span1_start, span1_end, span2_start, span2_end = pairs[indices[j]]
+                if (
+                    span1_start == 0
+                    or span2_start == 0
+                    or span1_end == len(toks1) - 1
+                    or span2_end == len(toks2) - 1
+                ):  # don't include lang code or end of sentence marker
+                    indices = indices[:j] + indices[j + 1 :]
+                else:
+                    index_chosen = True
+            if index_chosen:
+                revised_toks1 = []
+                for j in range(len(toks1)):
+                    if j == span1_start:
+                        revised_toks1.extend(toks2[span2_start : span2_end + 1])
+                    elif j < span1_start or j > span1_end:
+                        revised_toks1.append(toks1[j])
+                toks1 = revised_toks1
+            yield (toks1, toks2)
+
+
+class BitextIterableDataset(IterableDataset):
+    def __init__(self, bitext_iterable):
+        self.bitext_iterable = bitext_iterable
+
+    def __iter__(self):
+        yield from self.bitext_iterable
+
+
+class BatchedBitext:
+    def __init__(self, bitext, batch_size, src_pad_token=0, tgt_pad_token=0):
+        self.bitext = bitext
+        self.batch_size = batch_size
+        self.src_pad_token = src_pad_token
+        self.tgt_pad_token = tgt_pad_token
+
+    def collate_fn(self, batch):
+        src, tgt = zip(*batch)
+        src = [torch.tensor(x) for x in src]
+        tgt = [torch.tensor(x) for x in tgt]
+        src_padded = pad_sequence(
+            src, batch_first=True, padding_value=self.src_pad_token
+        )
+        tgt_padded = pad_sequence(
+            tgt, batch_first=True, padding_value=self.tgt_pad_token
+        )
+        return src_padded, tgt_padded
+
+    def __iter__(self):
+        loader = DataLoader(
+            BitextIterableDataset(self.bitext),
+            batch_size=self.batch_size,
+            collate_fn=self.collate_fn,
+            drop_last=False,
+        )
+        for batch in loader:
+            yield batch
+
+
 class MixtureOfBitexts:
     def __init__(
         self,
         bitexts: Dict[Tuple[str, str], Bitext],
-        batch_size: int,
         sampling_probs: Optional[List[float]] = None,
         only_once_thru: bool = False,
     ):
         self.bitexts = bitexts
         self.keys = list(bitexts)
-        self.batch_size = batch_size
         self.batch_iters = {}
         for key in self.keys:
-            self.batch_iters[key] = self._create_iterator(key)
+            self.batch_iters[key] = iter(self.bitexts[key])
 
         total = sum(sampling_probs) if sampling_probs else len(bitexts)
         self.sampling_probs = [
             p / total for p in (sampling_probs or [1.0] * len(bitexts))
         ]
-
         self.only_once_thru = only_once_thru
         self.completed_bitexts = set()
-
-    def _create_iterator(
-        self, key: Tuple[str, str]
-    ) -> Iterator[Tuple[List[str], List[str]]]:
-        return iter(
-            DataLoader(
-                self.bitexts[key],
-                batch_size=self.batch_size,
-                shuffle=False,
-                drop_last=True,
-            )
-        )
 
     def restart(self):
         self.completed_bitexts = set()
         for key in self.keys:
-            self.batch_iters[key] = self._create_iterator(key)
+            self.batch_iters[key] = iter(self.bitexts[key])
 
-    def next_batch(self) -> Optional[Tuple[List[str], List[str], str, str]]:
-        still_choosing = True
-        while still_choosing and len(self.completed_bitexts) < len(self.keys):
-            lang_pair = random.choices(self.keys, weights=self.sampling_probs, k=1)[0]
-            try:
-                lang1_sents, lang2_sents = next(self.batch_iters[lang_pair])
-                still_choosing = False
-            except StopIteration:
-                if self.only_once_thru:
-                    self.completed_bitexts.add(lang_pair)
-                else:
-                    self.batch_iters[lang_pair] = self._create_iterator(lang_pair)
-        if still_choosing:
-            return None
-        else:
-            return lang1_sents, lang2_sents, lang_pair[0], lang_pair[1]
+    def __iter__(self):
+        still_looping = True
+        while still_looping:
+            still_choosing = True
+            while still_choosing and len(self.completed_bitexts) < len(self.keys):
+                lang_pair = random.choices(self.keys, weights=self.sampling_probs, k=1)[
+                    0
+                ]
+                try:
+                    lang1_sents, lang2_sents = next(self.batch_iters[lang_pair])
+                    still_choosing = False
+                except StopIteration:
+                    if self.only_once_thru:
+                        self.completed_bitexts.add(lang_pair)
+                    else:
+                        self.batch_iters[lang_pair] = iter(self.bitexts[lang_pair])
+            if not still_choosing:
+                yield lang1_sents, lang2_sents, lang_pair[0], lang_pair[1]
+            else:
+                still_looping = False
 
     @staticmethod
     def create_from_files(
@@ -172,82 +270,6 @@ class MixtureOfBitexts:
 
     def get_language_codes(self) -> List[str]:
         return sorted({code for pair in self.keys for code in pair})
-
-
-class TokenizedMixtureOfBitexts:
-    def __init__(
-        self,
-        mixture_of_bitexts: MixtureOfBitexts,
-        tokenizer: Tokenizer,
-        lang_codes: Dict[CorpusId, str],
-        code_switch_map: Dict[
-            CorpusId, Callable[[List[int], List[int]], List[int]]
-        ] = dict(),
-        use_alt_pad_token_for_tgt_lang=True,
-        permutation_prob=1.0,
-    ):
-        self.mixture_of_bitexts = mixture_of_bitexts
-        self.tokenizer = tokenizer
-        self.lang_codes = lang_codes
-        self.code_switch_map = code_switch_map
-        self.use_alt_pad_token_for_tgt_lang = use_alt_pad_token_for_tgt_lang
-        self.permutation_prob = permutation_prob
-
-    def _tokenize(self, sents: List[str], corpus: CorpusId, alt_pad_token: int = None):
-        tokens_list = [
-            self.tokenizer([sent], lang_code=self.lang_codes[corpus])["input_ids"][
-                0
-            ].tolist()
-            for sent in sents
-        ]
-
-        # Apply code-switch replacements if available
-        if corpus in self.code_switch_map:
-            new_tokens_list = []
-            for idx, tok_ids in enumerate(tokens_list):
-                print(tok_ids)
-                tgt_ids = tok_ids.copy()
-                # Create a random mask based on permutation_prob
-                mask = (
-                    (torch.rand(len(tok_ids)) <= self.permutation_prob).int().tolist()
-                )
-                print(mask)
-                print(self.code_switch_map[corpus])
-                # Build replacement plans
-                plans = build_replacement_plans(
-                    tok_ids,
-                    tgt_ids,
-                    alignment=self.code_switch_map[corpus][idx],
-                    random_mask=mask,
-                )
-                print(plans)
-
-                plans = filter_overlapping_plans(plans)
-                print(plans)
-
-                replaced = apply_replacements(tok_ids, plans)
-                print(replaced)
-                exit()
-                new_tokens_list.append(replaced)
-            tokens_list = new_tokens_list
-
-        # Pad sequences and create attention mask
-        pad_id = self.tokenizer.get_special_tokens()["<pad>"]
-        if alt_pad_token is not None:
-            pad_id = alt_pad_token
-        return collate_and_pad(tokens_list, pad_id)
-
-    def next_batch(self):
-        batch = self.mixture_of_bitexts.next_batch()
-        if batch is None:
-            return None
-        lang1_sents, lang2_sents, lang1, lang2 = batch
-        lang1_tokenized = self._tokenize(lang1_sents, lang1)
-        lang2_tokenized = self._tokenize(lang2_sents, lang2, alt_pad_token=-100)
-        return lang1_tokenized, lang2_tokenized, lang1, lang2
-
-    def restart(self):
-        self.mixture_of_bitexts.restart()
 
 
 class TokenizedMixtureOfTextAndGoalEncoding:

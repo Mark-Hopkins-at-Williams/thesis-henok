@@ -4,10 +4,12 @@ from corpora_kdswch import (
     Bitext,
     MultifileBitext,
     MixtureOfBitexts,
-    TokenizedMixtureOfBitexts,
+    CodeswitchedBitext,
+    BatchedBitext,
 )
 from extract_tok_utils import build_fast_align_dict_from_raw
-from corpora_kdswch import TokenizedMixtureOfTextAndGoalEncoding
+from corpora_kdswch import TokenizedMixtureOfTextAndGoalEncoding, TokenizedBitext
+import torch
 from torch import tensor
 from tokenization import NllbTokenizer
 from transformers import AutoModelForSeq2SeqLM
@@ -486,73 +488,136 @@ class TestCorpora(unittest.TestCase):
 
 class TestCorporaCodeswitch(unittest.TestCase):
 
-    def test_kdswch_tokenized_mixture_of_bitexts(self):
-        text_files = {
-            ("test", "eng"): "test_files/lang1.txt",
-            ("test", "fra"): "test_files/lang2.txt",
-        }
-        lang_codes = {("test", "eng"): "eng_Latn", ("test", "fra"): "fra_Latn"}
-        mix = MixtureOfBitexts.create_from_files(
-            text_files, [(("test", "eng"), ("test", "fra"), None)], 3
-        )
+    def test_bitext(self):
+        bitext = Bitext("test_files/lang1.txt", "test_files/lang2.txt")
         tokenizer = NllbTokenizer("600M")
-        cs_map = build_fast_align_dict_from_raw(
+        tokenized_bitext = TokenizedBitext(bitext, tokenizer, "eng_Latn", "fra_Latn")
+        for src, tgt in tokenized_bitext:
+            print(f"src: {src}")
+            print(f"tgt: {tgt}")
+
+    def test_codeswitched_bitext(self):
+        bitext = Bitext("test_files/lang1.txt", "test_files/lang2.txt")
+        tokenizer = NllbTokenizer("600M")
+        tokenized_bitext = TokenizedBitext(bitext, tokenizer, "eng_Latn", "fra_Latn")
+        alignments = build_fast_align_dict_from_raw(
             "test_files/lang1.txt",
             "test_files/lang2.txt",
             tokenizer,
             "eng_Latn",
             "fra_Latn",
         )
-
-        code_switch_map = {("test", "eng"): cs_map}
-        tmob = TokenizedMixtureOfBitexts(
-            mix,
-            tokenizer,
-            lang_codes=lang_codes,
-            code_switch_map=code_switch_map,
-            permutation_prob=0.9,
+        randomizer = lambda ls: ls[len(ls) // 2]
+        codeswitched_bitext = CodeswitchedBitext(
+            tokenized_bitext, alignments, randomizer=randomizer
         )
-        lang1_batch, lang2_batch, _, _ = tmob.next_batch()
-        expected_lang1_token_ids = tensor(
+        cb_iter = iter(codeswitched_bitext)
+        toks1, toks2 = next(cb_iter)
+        expected1 = [256047, 1617, 9, 170684, 356, 82, 324, 40284, 248075, 2]
+        expected2 = [256057, 1181, 32779, 9, 170684, 356, 82, 324, 40284, 248075, 2]
+        self.assertEqual(toks1, expected1)
+        self.assertEqual(toks2, expected2)
+        toks1, toks2 = next(cb_iter)
+        expected1 = [256047, 11873, 6622, 159, 68078, 248075, 2]
+        expected2 = [256057, 19945, 6622, 159, 68078, 248075, 2]
+        self.assertEqual(toks1, expected1)
+        self.assertEqual(toks2, expected2)
+        toks1, toks2 = next(cb_iter)
+        expected1 = [256047, 13710, 5665, 138, 1166, 96236, 248075, 2]
+        expected2 = [256057, 21422, 5665, 138, 1166, 96236, 248075, 2]
+        self.assertEqual(toks1, expected1)
+        self.assertEqual(toks2, expected2)
+
+    def test_codeswitched_bitext_dont_use_zero(self):
+        bitext = Bitext("test_files/lang1.txt", "test_files/lang2.txt")
+        tokenizer = NllbTokenizer("600M")
+        tokenized_bitext = TokenizedBitext(bitext, tokenizer, "eng_Latn", "fra_Latn")
+        alignments = build_fast_align_dict_from_raw(
+            "test_files/lang1.txt",
+            "test_files/lang2.txt",
+            tokenizer,
+            "eng_Latn",
+            "fra_Latn",
+        )
+        randomizer = lambda ls: 0
+        codeswitched_bitext = CodeswitchedBitext(
+            tokenized_bitext, alignments, randomizer=randomizer
+        )
+        cb_iter = iter(codeswitched_bitext)
+        toks1, toks2 = next(cb_iter)
+        expected1 = [256047, 1181, 7875, 228, 55501, 349, 227879, 248075, 2]
+        expected2 = [256057, 1181, 32779, 9, 170684, 356, 82, 324, 40284, 248075, 2]
+        self.assertEqual(toks1, expected1)
+        self.assertEqual(toks2, expected2)
+        toks1, toks2 = next(cb_iter)
+        expected1 = [256047, 19945, 272, 22665, 9, 28487, 248075, 2]
+        expected2 = [256057, 19945, 6622, 159, 68078, 248075, 2]
+        self.assertEqual(toks1, expected1)
+        self.assertEqual(toks2, expected2)
+        toks1, toks2 = next(cb_iter)
+        expected1 = [256047, 21422, 18379, 43583, 2299, 248075, 2]
+        expected2 = [256057, 21422, 5665, 138, 1166, 96236, 248075, 2]
+        self.assertEqual(toks1, expected1)
+        self.assertEqual(toks2, expected2)
+
+    def test_batched_bitext(self):
+        bitext = Bitext("test_files/lang1.txt", "test_files/lang2.txt")
+        tokenizer = NllbTokenizer("600M")
+        tokenized_bitext = TokenizedBitext(bitext, tokenizer, "eng_Latn", "fra_Latn")
+        batched_bitext = BatchedBitext(
+            tokenized_bitext, 4, src_pad_token=0, tgt_pad_token=0
+        )
+        expected1 = tensor(
             [
                 [256047, 1617, 7875, 228, 55501, 349, 227879, 248075, 2],
-                [256047, 11873, 272, 22665, 9, 28487, 248075, 2, 1],
-                [256047, 13710, 18379, 43583, 2299, 248075, 2, 1, 1],
+                [256047, 11873, 272, 22665, 9, 28487, 248075, 2, 0],
+                [256047, 13710, 18379, 43583, 2299, 248075, 2, 0, 0],
+                [256047, 117, 6337, 109233, 248075, 2, 0, 0, 0],
             ]
         )
-        expected_lang2_token_ids = tensor(
+        expected2 = tensor(
             [
                 [256057, 1181, 32779, 9, 170684, 356, 82, 324, 40284, 248075, 2],
-                [256057, 19945, 6622, 159, 68078, 248075, 2, -100, -100, -100, -100],
-                [256057, 21422, 5665, 138, 1166, 96236, 248075, 2, -100, -100, -100],
+                [256057, 19945, 6622, 159, 68078, 248075, 2, 0, 0, 0, 0],
+                [256057, 21422, 5665, 138, 1166, 96236, 248075, 2, 0, 0, 0],
+                [256057, 156, 3, 913, 15931, 1877, 248075, 2, 0, 0, 0],
             ]
         )
-        expected_lang1_mask = tensor(
-            [
-                [1, 1, 1, 1, 1, 1, 1, 1, 1],
-                [1, 1, 1, 1, 1, 1, 1, 1, 0],
-                [1, 1, 1, 1, 1, 1, 1, 0, 0],
-            ]
+        bitext_iter = iter(batched_bitext)
+        lang1, lang2 = next(bitext_iter)
+        self.assertTrue(torch.equal(lang1, expected1))
+        self.assertTrue(torch.equal(lang2, expected2))
+
+    def test_mixture_of_bitexts(self):
+        tokenizer = NllbTokenizer("600M")
+        bitext1 = BatchedBitext(
+            TokenizedBitext(
+                Bitext("test_files/lang1.txt", "test_files/lang2.txt"),
+                tokenizer,
+                "eng_Latn",
+                "fra_Latn",
+            ),
+            4,
         )
-        expected_lang2_mask = tensor(
-            [
-                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-                [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-                [1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
-            ]
+        bitext2 = BatchedBitext(
+            TokenizedBitext(
+                Bitext("test_files/lang1.txt", "test_files/lang3.txt"),
+                tokenizer,
+                "eng_Latn",
+                "deu_Latn",
+            ),
+            4,
         )
-        # self.assertEqual(
-        #     lang1_batch["input_ids"].tolist(), expected_lang1_token_ids.tolist()
-        # )
-        # self.assertEqual(
-        #     lang2_batch["input_ids"].tolist(), expected_lang2_token_ids.tolist()
-        # )
-        # self.assertEqual(
-        #     lang1_batch["attention_mask"].tolist(), expected_lang1_mask.tolist()
-        # )
-        # self.assertEqual(
-        #     lang2_batch["attention_mask"].tolist(), expected_lang2_mask.tolist()
-        # )
+        mix = MixtureOfBitexts(
+            {("lang1", "lang2"): bitext1, ("lang1", "lang3"): bitext2},
+            only_once_thru=True,
+        )
+        counter = 0
+        for a, b, c, d in mix:
+            print(f"{c}: {a}")
+            print(f"{d}: {b}")
+            counter += 1
+        self.assertEqual(counter, 10)
 
 
 if __name__ == "__main__":

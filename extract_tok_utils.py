@@ -243,13 +243,27 @@ def build_fast_align_dict_from_raw(
     )
 
     # Step 3: parse output
-    alignments: Dict[int, Dict[int, List[int]]] = {}
-    for sent_id, line in enumerate(proc.stdout.strip().splitlines()):
-        sent_align = defaultdict(list)
+    alignments = []
+    for line in proc.stdout.strip().splitlines():
+        alignment = []
+        max_i = -1
         for pair in line.split():
             i, j = pair.split("-")
-            sent_align[int(i)].append(int(j))
-        alignments[sent_id] = dict(sent_align)
+            i, j = int(i), int(j)
+            alignment.append((i, j))
+            i = max(max_i, i)
+        align_map = [[] for _ in range(i + 1)]
+        for i, j in alignment:
+            align_map[i].append(j)
+        alignments.append(alignment)
+
+    # alignments: Dict[int, Dict[int, List[int]]] = {}
+    # for sent_id, line in enumerate(proc.stdout.strip().splitlines()):
+    #     sent_align = defaultdict(list)
+    #     for pair in line.split():
+    #         i, j = pair.split("-")
+    #         sent_align[int(i)].append(int(j))
+    #     alignments[sent_id] = dict(sent_align)
 
     return alignments
 
