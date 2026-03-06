@@ -277,17 +277,23 @@ class TokenizedMixtureOfTextAndGoalEncoding:
         self.tmob = tmob
         self.encoder = encoder
         self.encoder.eval()
+        self._iter = iter(self.tmob)
 
     def next_batch(self):
-        batch = self.tmob.next_batch()
-        if batch is not None:
-            lang1_sents, lang2_sents, lang1, _ = batch
-            # Henok Change for code switching
-            lang2_sents = {k: v.to(self.encoder.device) for k, v in lang2_sents.items()}
-            encodings = self.encoder(**lang2_sents).last_hidden_state
-            return lang1_sents, lang1, encodings, lang2_sents["attention_mask"]
-        else:
+        try:
+            lang1_sents, lang2_sents, lang1, _ = next(self._iter)
+        except StopIteration:
             return None
+        lang2_sents = lang2_sents.to(self.encoder.device)
+        # Only one batch
+        lang2_attn_mask = torch.ones_like(lang2_sents)
+        with torch.no_grad():
+            encodings = self.encoder(input_ids=lang2_sents, attention_mask=lang2_attn_mask).last_hidden_state
+        lang1_sents = lang1_sents.to(self.encoder.device)
+        lang1_attn_mask = torch.ones_like(lang1_sents)
+        lang1_dict = {"input_ids": lang1_sents, "attention_mask": lang1_attn_mask}
+        return lang1_dict, lang1, encodings, lang2_attn_mask
 
     def restart(self):
         self.tmob.restart()
+        self._iter = iter(self.tmob)

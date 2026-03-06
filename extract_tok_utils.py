@@ -251,8 +251,8 @@ def build_fast_align_dict_from_raw(
             i, j = pair.split("-")
             i, j = int(i), int(j)
             alignment.append((i, j))
-            i = max(max_i, i)
-        align_map = [[] for _ in range(i + 1)]
+            max_i = max(max_i, i)
+        align_map = [[] for _ in range(max_i + 1)]
         for i, j in alignment:
             align_map[i].append(j)
         alignments.append(alignment)
