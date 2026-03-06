@@ -1,0 +1,67 @@
+{
+    "model_dir": "examples/model-example1",
+    "finetuning_parameters": {
+        "base_model": "facebook/nllb-200-distilled-600M",
+        "finetune": true,
+        "freeze_encoder": false,
+        "freeze_decoder": false,
+        "report_every": 50,
+        "validate_every": 50,
+        "patience": 5,
+        "batch_size": 32,
+        "src_pad_id": 0,
+        "tgt_pad_id": -100,
+        "num_steps": 2000
+    },
+    "tokenizers": {
+        "nllb": {
+            "type": "huggingface",
+            "model": "facebook/nllb-200-distilled-600M",
+            "max_length": 512
+        }
+    },
+    "corpora": {
+        "europarl-eng": {
+            "lang_code": "eng_Latn",
+            "train": "examples/data/train.en",
+            "dev": "examples/data/dev.en",
+            "test": "examples/data/test.en",
+            "encipherment": 0,
+            "tokenizer": "nllb"
+        },
+        "europarl-esp-enciphered": {
+            "lang_code": "tsn_Latn",
+            "train": "examples/data/train.es",
+            "dev": "examples/data/dev.es",
+            "test": "examples/data/test.es",
+            "encipherment": 1,
+            "tokenizer": "nllb"
+        },
+        "europarl-esp-enciphered2": {
+            "lang_code": "tso_Latn",
+            "train": "examples/data/train.es",
+            "dev": "examples/data/dev.es",
+            "test": "examples/data/test.es",
+            "encipherment": 2,
+            "tokenizer": "nllb"
+        }
+    },
+    "bitexts": [
+        {
+            "src": "europarl-eng",
+            "tgt": "europarl-esp-enciphered",
+            "train_lines": [
+                0,
+                1024
+            ]
+        },
+        {
+            "src": "europarl-eng",
+            "tgt": "europarl-esp-enciphered2",
+            "train_lines": [
+                1024,
+                2048
+            ]
+        }
+    ]
+}

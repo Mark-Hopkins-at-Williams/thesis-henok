@@ -1,10 +1,7 @@
 import argparse
 from configure import create_experiment_dir
-from configure import create_permutations
-from configure import harvest_language_codes
-from configure import initialize_tokenizer
 from configure import read_finetuning_params
-from corpora import MixtureOfBitexts, TokenizedMixtureOfBitexts
+from configure import create_bitexts
 import json
 import matplotlib
 import matplotlib.pyplot as plt
@@ -69,16 +66,16 @@ def finetune(model, train_data, dev_data, model_dir, ft_params):
     accumulation_steps = ft_params.gradient_accumulation_steps
     optimizer.zero_grad(set_to_none=True)
 
-    def evaluate(model, dev_data, batches):
+    def evaluate(model, dev_data):
+        dev_data.restart()
         model.eval()
         try:
             losses = []
             with torch.no_grad(), torch.amp.autocast("cuda", enabled=use_amp):
-                for _ in range(batches):
-                    x, y, _, _ = dev_data.next_batch()
-                    x = x.to(model.device)
-                    y = y.to(model.device)
-                    loss = model(**x, labels=y.input_ids).loss
+                for x, y, _, _ in tqdm(dev_data):
+                    x = {k: v.to(model.device) for k, v in x.items()}
+                    y = {k: v.to(model.device) for k, v in y.items()}
+                    loss = model(**x, labels=y["input_ids"]).loss
                     losses.append(loss.item())
         finally:
             model.train()
@@ -93,14 +90,15 @@ def finetune(model, train_data, dev_data, model_dir, ft_params):
     steps_since_best = 0
 
     model.train()
+    train_iter = iter(train_data)
 
     for step in tqdm(range(1, ft_params.num_training_steps + 1)):
         try:
-            x, y, _, _ = train_data.next_batch()
-            x = x.to(model.device)
-            y = y.to(model.device)
+            x, y, _, _ = next(train_iter)
+            x = {k: v.to(model.device) for k, v in x.items()}
+            y = {k: v.to(model.device) for k, v in y.items()}
             with torch.amp.autocast("cuda", enabled=use_amp):
-                loss = model(**x, labels=y.input_ids).loss
+                loss = model(**x, labels=y["input_ids"]).loss
                 loss = loss / accumulation_steps
             scaler.scale(loss).backward()
             train_losses.append(loss.item() * accumulation_steps)
@@ -132,7 +130,7 @@ def finetune(model, train_data, dev_data, model_dir, ft_params):
 
         if step % ft_params.validate_every == 0:  # validation
             logger("Validating...")
-            dev_loss = evaluate(model, dev_data, batches=ft_params.dev_batches)
+            dev_loss = evaluate(model, dev_data)
             logger(f"Dev loss: {dev_loss:.4f}")
 
             dev_plot_x.append(step)
@@ -173,25 +171,13 @@ def main():
 
     ft_params = read_finetuning_params(config)
     experiment_dir = create_experiment_dir(config, args.config)
-    lang_codes = harvest_language_codes(config)
-    tokenizer = initialize_tokenizer(config)
-    pmap = create_permutations(config, tokenizer)
-    save_permutation_map(pmap, Path(experiment_dir) / "permutations.json")
-    train_data = MixtureOfBitexts.create_from_config(
-        config, "train", only_once_thru=False
-    )
-    dev_data = MixtureOfBitexts.create_from_config(config, "dev", only_once_thru=False)
-    tokenized_train = TokenizedMixtureOfBitexts(
-        train_data, tokenizer, lang_codes=lang_codes, permutation_map=pmap
-    )
-    tokenized_dev = TokenizedMixtureOfBitexts(
-        dev_data, tokenizer, lang_codes=lang_codes, permutation_map=pmap
-    )
+    bitexts = create_bitexts(config)
+    save_permutation_map(bitexts["cipher_map"], Path(experiment_dir) / "ciphers.json")
     model = prepare_model_for_finetuning(ft_params)
     finetune(
         model,
-        tokenized_train,
-        tokenized_dev,
+        bitexts["train"],
+        bitexts["dev"],
         experiment_dir,
         ft_params,
     )

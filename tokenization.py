@@ -53,13 +53,14 @@ class HuggingfaceTokenizer(Tokenizer):
     def __call__(self, sents: List[str], lang_code=None):
         if lang_code is not None:
             self.tokenizer.src_lang = lang_code
-        return self.tokenizer(
+        result = self.tokenizer(
             sents,
             return_tensors="pt",
             padding=True,
             truncation=True,
             max_length=self.max_length if self.max_length is not None else None,
         )
+        return result["input_ids"].squeeze().tolist()
 
     def get_special_tokens(self):
         return self.special_tokens

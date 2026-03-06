@@ -1,8 +1,9 @@
 import argparse
+from configure import create_bitexts_from_experiment_dir
 from configure import harvest_language_codes
 from configure import initialize_tokenizer
 from configure import USE_CUDA
-from corpora import MixtureOfBitexts, TokenizedMixtureOfBitexts
+from corpora import MixtureOfBitexts
 import evaluate
 import json
 from myutil import logger
@@ -74,22 +75,14 @@ def evaluate_translations(candidate_translations, reference_translations):
 
 def evaluate_experiment(experiment_dir):
     logger(f"Initializing model from: {experiment_dir}")
-    config_file = Path(experiment_dir) / "experiment.json"
-    with open(config_file) as reader:
-        config = json.load(reader)
+    bitexts = create_bitexts_from_experiment_dir(experiment_dir)
     model = AutoModelForSeq2SeqLM.from_pretrained(experiment_dir)
     if USE_CUDA:
         model.cuda()
-    lang_codes = harvest_language_codes(config)
-    tokenizer = initialize_tokenizer(config)
-    pmap = load_permutation_map(Path(experiment_dir) / "permutations.json")
-    test_data = MixtureOfBitexts.create_from_config(config, "test", only_once_thru=True)
-    tokenized_test = TokenizedMixtureOfBitexts(
-        test_data, tokenizer, lang_codes=lang_codes, permutation_map=pmap
-    )
+
     logger(f"Translating test data")
     translations = translate_tokenized_mixture_of_bitexts(
-        tokenized_test, model, tokenizer, lang_codes, pmap
+        bitexts["test"], model, tokenizer, lang_codes, pmap
     )
     with open(Path(experiment_dir) / "translations.json", "w") as writer:
         json.dump(translations, writer)
