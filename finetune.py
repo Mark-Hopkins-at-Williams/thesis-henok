@@ -72,7 +72,7 @@ def finetune(model, train_data, dev_data, model_dir, ft_params):
         try:
             losses = []
             with torch.no_grad(), torch.amp.autocast("cuda", enabled=use_amp):
-                for x, y, _, _ in tqdm(dev_data):
+                for x, y, _ in tqdm(dev_data):
                     x = {k: v.to(model.device) for k, v in x.items()}
                     y = {k: v.to(model.device) for k, v in y.items()}
                     loss = model(**x, labels=y["input_ids"]).loss
@@ -94,7 +94,7 @@ def finetune(model, train_data, dev_data, model_dir, ft_params):
 
     for step in tqdm(range(1, ft_params.num_training_steps + 1)):
         try:
-            x, y, _, _ = next(train_iter)
+            x, y, _ = next(train_iter)
             x = {k: v.to(model.device) for k, v in x.items()}
             y = {k: v.to(model.device) for k, v in y.items()}
             with torch.amp.autocast("cuda", enabled=use_amp):

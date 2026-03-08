@@ -100,14 +100,14 @@ def create_ciphers(config, tokenizer_map):
         cipher_index = all_corpora[corpus_name]["encipherment"]
         tokenizer_name = all_corpora[corpus_name]["tokenizer"]
         tokenizer = tokenizer_map[tokenizer_name]
-        if cipher_index > 0:
+        if cipher_index != "0":
             cipher_id = (tokenizer_name, cipher_index)
             if cipher_id not in ciphers:
                 ciphers[cipher_id] = create_random_permutation_with_fixed_points(
                     len(tokenizer),
                     list(tokenizer.get_special_tokens().values()),
                 )
-            cipher_map[corpus_name] = ciphers[cipher_id]
+            cipher_map[(tokenizer_name, cipher_index)] = ciphers[cipher_id]
     return cipher_map
 
 
@@ -131,17 +131,32 @@ def create_bitexts(config, cipher_map=None):
             tokenizer = tokenizer_map[corpus_config["tokenizer"]]
             text_file = corpus_config[split]
             lang_code = corpus_config["lang_code"]
+            tokenizer_name = corpus_config["tokenizer"]
+            encipherment = corpus_config["encipherment"]
             corpus = TokenizedCorpus(Corpus(text_file), tokenizer, lang_code)
-            if corpus_name in cipher_map:
-                corpus = EncipheredCorpus(corpus, cipher_map[corpus_name])
+            if (tokenizer_name, encipherment) in cipher_map:
+                corpus = EncipheredCorpus(
+                    corpus, cipher_map[(tokenizer_name, encipherment)]
+                )
             all_corpora[(corpus_name, split)] = corpus
 
     bitexts = dict()
+    metadata = dict()
     params = config["finetuning_parameters"]
     for bitext in config["bitexts"]:
         src = bitext["src"]
         tgt = bitext["tgt"]
+        src_config = config["corpora"][src]
+        tgt_config = config["corpora"][tgt]
         bitexts[(src, tgt)] = dict()
+        metadata[(src, tgt)] = {
+            "lang1_tokenizer": src_config["tokenizer"],
+            "lang1_encipherment": src_config["encipherment"],
+            "lang1_code": src_config["lang_code"],
+            "lang2_tokenizer": tgt_config["tokenizer"],
+            "lang2_encipherment": tgt_config["encipherment"],
+            "lang2_code": tgt_config["lang_code"],
+        }
         for split in ["train", "dev", "test"]:
             lines = (
                 bitext["train_lines"]
@@ -159,9 +174,13 @@ def create_bitexts(config, cipher_map=None):
     for split in ["train", "dev", "test"]:
         split_bitexts = {key: bitexts[key][split] for key in bitexts}
         mixtures[split] = MixtureOfBitexts(
-            split_bitexts, sampling_probs=None, only_once_thru=(split != "train")
+            split_bitexts,
+            metadata,
+            sampling_probs=None,
+            only_once_thru=(split != "train"),
         )
     mixtures["cipher_map"] = cipher_map
+    mixtures["tokenizer_map"] = tokenizer_map
     return mixtures
 
 
@@ -169,5 +188,5 @@ def create_bitexts_from_experiment_dir(experiment_dir):
     config_file = Path(experiment_dir) / "experiment.json"
     with open(config_file) as reader:
         config = json.load(reader)
-    emap = load_permutation_map(Path(experiment_dir) / "permutations.json")
-    return create_bitexts(config, encipherment_map=emap)
+    emap = load_permutation_map(Path(experiment_dir) / "ciphers.json")
+    return create_bitexts(config, cipher_map=emap)

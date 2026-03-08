@@ -157,10 +157,12 @@ class MixtureOfBitexts:
     def __init__(
         self,
         bitexts: Dict[Tuple[str, str], Bitext],
+        metadata: Dict[Tuple[str, str], Dict[str, str]],
         sampling_probs: Optional[List[float]] = None,
         only_once_thru: bool = False,
     ):
         self.bitexts = bitexts
+        self.metadata = metadata
         self.keys = list(bitexts)
         self.batch_iters = {}
         for key in self.keys:
@@ -195,7 +197,7 @@ class MixtureOfBitexts:
                     else:
                         self.batch_iters[lang_pair] = iter(self.bitexts[lang_pair])
             if not still_choosing:
-                yield lang1_sents, lang2_sents, lang_pair[0], lang_pair[1]
+                yield lang1_sents, lang2_sents, self.metadata[lang_pair]
             else:
                 still_looping = False
 

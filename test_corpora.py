@@ -718,8 +718,8 @@ class TestCorporaRevised(unittest.TestCase):
         )
         bitext_iter = iter(batched_bitext)
         lang1, lang2 = next(bitext_iter)
-        self.assertTrue(torch.equal(lang1, expected1))
-        self.assertTrue(torch.equal(lang2, expected2))
+        self.assertTrue(torch.equal(lang1["input_ids"], expected1))
+        self.assertTrue(torch.equal(lang2["input_ids"], expected2))
 
     def test_mixture_of_bitexts(self):
         tokenizer = NllbTokenizer("600M")
@@ -735,8 +735,28 @@ class TestCorporaRevised(unittest.TestCase):
         tokenized_corpus2 = TokenizedCorpus(corpus2, tokenizer, lang_code="fra_Latn")
         bitext = Bitext(tokenized_corpus1, tokenized_corpus2)
         batched_bitext2 = BatchedBitext(bitext, 4, src_pad_token=0, tgt_pad_token=-100)
+        bitext1_metadata = {
+            "lang1_tokenizer": "nllb",
+            "lang1_encipherment": 0,
+            "lang1_code": "eng_Latn",
+            "lang2_tokenizer": "nllb",
+            "lang2_encipherment": 0,
+            "lang2_code": "fra_Latn",
+        }
+        bitext2_metadata = {
+            "lang1_tokenizer": "nllb",
+            "lang1_encipherment": 0,
+            "lang1_code": "eng_Latn",
+            "lang2_tokenizer": "nllb",
+            "lang2_encipherment": 0,
+            "lang2_code": "deu_Latn",
+        }
         mix = MixtureOfBitexts(
             {("lang1", "lang2"): batched_bitext1, ("lang1", "lang3"): batched_bitext2},
+            {
+                ("lang1", "lang2"): bitext1_metadata,
+                ("lang1", "lang3"): bitext2_metadata,
+            },
             only_once_thru=True,
         )
         counter = 0
@@ -758,9 +778,24 @@ class TestCorporaRevised(unittest.TestCase):
             config = json.load(f)
         mix = create_bitexts(config)
         mix_iter = iter(mix["train"])
-        batch1, batch2, lang1, lang2 = next(mix_iter)
-        self.assertEqual(lang1, "lang1")
-        if lang2 == "lang2":
+        batch1, batch2, metadata = next(mix_iter)
+        bitext1_metadata = {
+            "lang1_tokenizer": "nllb",
+            "lang1_encipherment": 0,
+            "lang1_code": "eng_Latn",
+            "lang2_tokenizer": "nllb",
+            "lang2_encipherment": 0,
+            "lang2_code": "fra_Latn",
+        }
+        bitext2_metadata = {
+            "lang1_tokenizer": "nllb",
+            "lang1_encipherment": 0,
+            "lang1_code": "eng_Latn",
+            "lang2_tokenizer": "nllb",
+            "lang2_encipherment": 0,
+            "lang2_code": "deu_Latn",
+        }
+        if metadata["lang2_code"] == "fra_Latn":
             expected1 = tensor(
                 [
                     [256047, 1617, 7875, 228, 55501, 349, 227879, 248075, 2],
@@ -785,8 +820,8 @@ class TestCorporaRevised(unittest.TestCase):
                     ],
                 ]
             )
+            self.assertEqual(metadata, bitext1_metadata)
         else:
-            self.assertEqual(lang2, "lang3")
             expected1 = tensor(
                 [
                     [256047, 7007, 158826, 349, 9715, 248075, 2, 0],
@@ -799,8 +834,9 @@ class TestCorporaRevised(unittest.TestCase):
                     [256042, 6856, 33887, 10184, 24453, 211091, 4108, 77678, 248075, 2],
                 ]
             )
-        self.assertTrue(torch.equal(batch1, expected1))
-        self.assertTrue(torch.equal(batch2, expected2))
+            self.assertEqual(metadata, bitext2_metadata)
+        self.assertTrue(torch.equal(batch1["input_ids"], expected1))
+        self.assertTrue(torch.equal(batch2["input_ids"], expected2))
 
 
 if __name__ == "__main__":

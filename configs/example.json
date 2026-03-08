@@ -1,5 +1,5 @@
 {
-    "model_dir": "examples/model-example1",
+    "model_dir": "experiments/example",
     "finetuning_parameters": {
         "base_model": "facebook/nllb-200-distilled-600M",
         "finetune": true,
@@ -21,39 +21,31 @@
         }
     },
     "corpora": {
-        "europarl-eng": {
+        "europarl-en": {
             "lang_code": "eng_Latn",
-            "train": "examples/data/train.en",
-            "dev": "examples/data/dev.en",
-            "test": "examples/data/test.en",
+            "train": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/train.en",
+            "dev": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/dev.en",
+            "test": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/test.en",
             "encipherment": "0",
             "tokenizer": "nllb"
         },
-        "europarl-esp-enciphered": {
+        "europarl-de": {
             "lang_code": "tsn_Latn",
-            "train": "examples/data/train.es",
-            "dev": "examples/data/dev.es",
-            "test": "examples/data/test.es",
+            "train": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/train.de",
+            "dev": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/dev.de",
+            "test": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/test.de",
             "encipherment": "1",
-            "tokenizer": "nllb"
-        },
-        "europarl-esp-enciphered2": {
-            "lang_code": "tso_Latn",
-            "train": "examples/data/train.es",
-            "dev": "examples/data/dev.es",
-            "test": "examples/data/test.es",
-            "encipherment": "2",
             "tokenizer": "nllb"
         }
     },
     "bitexts": [
         {
-            "src": "europarl-eng",
-            "tgt": "europarl-esp-enciphered"
-        },
-        {
-            "src": "europarl-eng",
-            "tgt": "europarl-esp-enciphered2"
+            "src": "europarl-en",
+            "tgt": "europarl-de",
+            "train_lines": [
+                0,
+                16834
+            ]
         }
     ]
 }

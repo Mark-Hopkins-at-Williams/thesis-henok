@@ -14,7 +14,7 @@ from transformers import AutoModelForSeq2SeqLM
 
 def translate(
     src_tokenized,
-    tokenizer,
+    tgt_tokenizer,
     model,
     tgt_lang,
     permutation=None,
@@ -24,36 +24,45 @@ def translate(
     **kwargs,
 ):
     model.eval()
+    src_tokenized = {k: v.to(model.device) for k, v in src_tokenized.items()}
     result = model.generate(
-        **src_tokenized.to(model.device),
-        forced_bos_token_id=tokenizer.get_special_tokens()[tgt_lang],
-        max_new_tokens=int(a + b * src_tokenized.input_ids.shape[1]),
+        **src_tokenized,
+        forced_bos_token_id=tgt_tokenizer.get_special_tokens()[tgt_lang],
+        max_new_tokens=int(a + b * src_tokenized["input_ids"].shape[1]),
         num_beams=num_beams,
         **kwargs,
     )
     result = result.to("cpu")
     if permutation is not None:
         result.apply_(permutation.get_inverse())
-    return tokenizer.batch_decode(result)
+    return tgt_tokenizer.batch_decode(result)
 
 
-def translate_tokenized_mixture_of_bitexts(mix, model, tokenizer, lang_codes, pmap):
+def translate_tokenized_mixture_of_bitexts(mix, model, tokenizer_map, cipher_map):
     if USE_CUDA:
         model.cuda()
-    batch = mix.next_batch()
     translations = dict()
-    while batch is not None:
-        src, tgt, src_lang, tgt_lang = batch
-        permutation = pmap[tgt_lang] if tgt_lang in pmap else None
-        src_code = lang_codes[src_lang]
-        tgt_code = lang_codes[tgt_lang]
+    for batch in mix:
+        src, _, metadata = batch
+        cipher = (
+            cipher_map[metadata["lang2_tokenizer"], metadata["lang2_encipherment"]]
+            if metadata["lang2_encipherment"] != "0"
+            else None
+        )
+        src_code = metadata["lang1_code"]
+        tgt_code = metadata["lang2_code"]
         key = "->".join([src_code, tgt_code])
         if key not in translations:
             translations[key] = []
-        translated = translate(src, tokenizer, model, tgt_code, permutation)
+        translated = translate(
+            src,
+            tokenizer_map[metadata["lang2_tokenizer"]],
+            model,
+            tgt_code,
+            cipher,
+        )
         translations[key].extend(translated)
         logger(f"translation: {translated[0]}")
-        batch = mix.next_batch()
     return translations
 
 
@@ -80,29 +89,43 @@ def evaluate_experiment(experiment_dir):
     if USE_CUDA:
         model.cuda()
 
+    logger(f"Collating reference translations")
+    references = dict()
+    test_data = bitexts["test"]
+    test_data.restart()
+    tokenizer_map = bitexts["tokenizer_map"]
+    cipher_map = bitexts["cipher_map"]
+    for _, tgt, metadata in test_data:
+        src_code = metadata["lang1_code"]
+        tgt_code = metadata["lang2_code"]
+        tgt_tokenizer = tokenizer_map[metadata["lang2_tokenizer"]]
+        key = "->".join([src_code, tgt_code])
+        if key not in references:
+            references[key] = []
+        tgt_ids = tgt["input_ids"]
+        tgt_ids[tgt_ids == -100] = 2  # TODO: make more general
+        cipher = (
+            cipher_map[metadata["lang2_tokenizer"], metadata["lang2_encipherment"]]
+            if metadata["lang2_encipherment"] != "0"
+            else None
+        )
+        if cipher is not None:
+            tgt_ids.apply_(cipher.get_inverse())
+        tgt = tgt_tokenizer.batch_decode(tgt_ids)
+        references[key].extend(tgt)
+    with open(Path(experiment_dir) / "references.json", "w") as writer:
+        json.dump(references, writer)
+    logger("...references complete.")
+
     logger(f"Translating test data")
+    test_data.restart()
     translations = translate_tokenized_mixture_of_bitexts(
-        bitexts["test"], model, tokenizer, lang_codes, pmap
+        test_data, model, tokenizer_map, bitexts["cipher_map"]
     )
     with open(Path(experiment_dir) / "translations.json", "w") as writer:
         json.dump(translations, writer)
     logger("...translation complete.")
-    logger(f"Collating reference translations")
-    test_data = MixtureOfBitexts.create_from_config(config, "test", only_once_thru=True)
-    references = dict()
-    batch = test_data.next_batch()
-    while batch is not None:
-        _, tgt, src_lang, tgt_lang = batch
-        src_code = lang_codes[src_lang]
-        tgt_code = lang_codes[tgt_lang]
-        key = "->".join([src_code, tgt_code])
-        if key not in references:
-            references[key] = []
-        references[key].extend(tgt)
-        batch = test_data.next_batch()
-    with open(Path(experiment_dir) / "references.json", "w") as writer:
-        json.dump(references, writer)
-    logger("...references complete.")
+
     logger(f"Scoring translations")
     scores = dict()
     for key in translations:
