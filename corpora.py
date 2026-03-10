@@ -205,22 +205,19 @@ class MixtureOfBitexts:
         return sorted({code for pair in self.keys for code in pair})
 
 
-class TokenizedMixtureOfTextAndGoalEncoding:
-    def __init__(self, tmob, encoder):
-        self.tmob = tmob
+class MixtureOfTextAndGoalEncodings:
+    def __init__(self, mix, encoder):
+        self.mix = mix
         self.encoder = encoder
         self.encoder.eval()
 
-    def next_batch(self):
-        batch = self.tmob.next_batch()
-        if batch is not None:
-            lang1_sents, lang2_sents, lang1, _ = batch
-            # Henok Change for code switching
+    def __iter__(self):
+        for lang1_sents, lang2_sents, metadata in self.mix:
             lang2_sents = {k: v.to(self.encoder.device) for k, v in lang2_sents.items()}
             encodings = self.encoder(**lang2_sents).last_hidden_state
-            return lang1_sents, lang1, encodings, lang2_sents["attention_mask"]
-        else:
-            return None
+            yield lang1_sents, metadata["lang1_code"], encodings, lang2_sents[
+                "attention_mask"
+            ]
 
     def restart(self):
-        self.tmob.restart()
+        self.mix.restart()
