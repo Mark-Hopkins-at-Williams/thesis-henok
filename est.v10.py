@@ -37,10 +37,10 @@ def plot_losses(train_x, train_y, dev_x, dev_y, out_path: str):
     plt.savefig(out_path)
 
 
-def finetune(model, train_data1, dev_data, model_dir, ft_params, goal_lang_key="en"):
+def finetune(model, train_data1, dev_data, model_dir, ft_params, goal_lang_key="en", pad_token_id=0):
     def compute_loss(batch):
         encoder.eval()
-        sents, lang, goal_encodings, goal_attn_mask = batch
+        sents, lang, goal_encodings, goal_attn_mask, lang2_sents = batch
         sent_attn_mask = sents["attention_mask"].to(encoder.device)
         sents = {k: v.to(encoder.device) for k, v in sents.items()}
         goal_encodings = goal_encodings.to(encoder.device)
@@ -87,6 +87,16 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params, goal_lang_key="
             token_norm_diffs = token_norm_diffs * sent_attn_mask
             loss2 = token_norm_diffs.sum() / sent_attn_mask.sum()
             loss = loss1 + loss2
+
+        # CE loss: full model forward pass with target token ids as labels
+        labels = lang2_sents.clone()
+        labels[labels == pad_token_id] = -100
+        ce_loss = model(
+            input_ids=sents["input_ids"],
+            attention_mask=sents["attention_mask"],
+            labels=labels,
+        ).loss
+        loss = loss + ce_loss
         return loss
 
     logger(f"Training {model_dir}")
@@ -137,7 +147,7 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params, goal_lang_key="
                 with torch.no_grad():
                     batch = dev_data.next_batch()
                     while batch is not None:
-                        sents, lang, goal_encodings, goal_attn_mask = batch
+                        sents, lang, goal_encodings, goal_attn_mask, lang2_sents = batch
                         loss = compute_loss(batch)
                         if lang not in dev_losses:
                             dev_losses[lang] = []
@@ -232,10 +242,10 @@ def main():
     model = prepare_model_for_finetuning(ft_params)
 
     train_mix = TokenizedMixtureOfTextAndGoalEncoding(
-        train_data, static_model.model.encoder, pad_token_id=pad_token_id
+        train_data, static_model.model.encoder, pad_token_id=pad_token_id, return_raw_tokens=True
     )
     dev_mix = TokenizedMixtureOfTextAndGoalEncoding(
-        dev_data, static_model.model.encoder, pad_token_id=pad_token_id
+        dev_data, static_model.model.encoder, pad_token_id=pad_token_id, return_raw_tokens=True
     )
 
     finetune(
@@ -245,6 +255,7 @@ def main():
         experiment_dir,
         ft_params,
         goal_lang_key=goal_lang_key,
+        pad_token_id=pad_token_id,
     )
     evaluate_experiment(experiment_dir)
 

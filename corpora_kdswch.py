@@ -273,10 +273,12 @@ class MixtureOfBitexts:
 
 
 class TokenizedMixtureOfTextAndGoalEncoding:
-    def __init__(self, tmob, encoder):
+    def __init__(self, tmob, encoder, pad_token_id=0, return_raw_tokens=False):
         self.tmob = tmob
         self.encoder = encoder
         self.encoder.eval()
+        self.pad_token_id = pad_token_id
+        self.return_raw_tokens = return_raw_tokens
         self._iter = iter(self.tmob)
 
     def next_batch(self):
@@ -285,13 +287,14 @@ class TokenizedMixtureOfTextAndGoalEncoding:
         except StopIteration:
             return None
         lang2_sents = lang2_sents.to(self.encoder.device)
-        # Only one batch
-        lang2_attn_mask = torch.ones_like(lang2_sents)
+        lang2_attn_mask = (lang2_sents != self.pad_token_id).long()
         with torch.no_grad():
             encodings = self.encoder(input_ids=lang2_sents, attention_mask=lang2_attn_mask).last_hidden_state
         lang1_sents = lang1_sents.to(self.encoder.device)
-        lang1_attn_mask = torch.ones_like(lang1_sents)
+        lang1_attn_mask = (lang1_sents != self.pad_token_id).long()
         lang1_dict = {"input_ids": lang1_sents, "attention_mask": lang1_attn_mask}
+        if self.return_raw_tokens:
+            return lang1_dict, lang1, encodings, lang2_attn_mask, lang2_sents
         return lang1_dict, lang1, encodings, lang2_attn_mask
 
     def restart(self):

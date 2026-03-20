@@ -1,4 +1,145 @@
-\chapter{Related Work}
+\chapter{Overview and Motivation}
 
-\section{Transformers}
+Machine translation has undergone rapid progress over the past decade, largely due to the emergence of neural network architectures. These systems have pushed the boundaries of multilingual communication and made cross-lingual information increasingly accessible. Yet, despite impressive improvements in translation quality for high-resource languages, many low-resource languages remain underserved. This persistent gap is not only a technical limitation but also a barrier to equitable access to digital information.
 
+Modern translation models are primarily trained to generate target-language sequences that closely match ground-truth examples provided during training. Although this approach is intuitive and has fueled many of the major successes in translation, it may not be the only way to train multilingual systems. In particular, encoder representations are largely overlooked as an independent target for optimization. Yet improving the internal structure of these vector representations---specifically, their alignment across languages---may offer significant advantages for translation quality, especially for low-resource languages.
+
+This thesis aims to make the following contributions:
+
+\begin{itemize}
+  \item A conceptual argument for treating encoder alignment as a distinct optimization target.
+  \item An empirical investigation of cross-lingual encoder vector structure using a large multilingual model.
+  \item A proposed encoder alignment objective for future model training.
+  \item Experimental evaluation on multilingual and low-resource translation tasks.
+\end{itemize}
+
+The remainder of this chapter explains the stages of the machine translation pipeline in detail, then develops the motivation for encoder-level alignment as a research direction.
+
+% ---------------------------------------------------------------
+\section{The Machine Translation Pipeline}
+% ---------------------------------------------------------------
+
+A neural machine translation system processes input text through a sequence of well-defined stages. Each stage transforms the data into a representation that the next stage can consume. The subsections below trace each stage using a single running example, building the intuition needed to understand where encoder representations arise and why their structure matters.
+
+% ---------------------------------------------------------------
+\subsection{Input Text}
+% ---------------------------------------------------------------
+
+The pipeline begins with a raw text string supplied by the user. At this stage no linguistic annotation is assumed: the system receives a plain sequence of characters and is expected to discover all necessary structure on its own. This design choice is deliberate---requiring hand-crafted annotations would defeat the purpose of learned representations and would make the system brittle when applied to new domains or languages. As a running example, consider the English sentence
+
+\begin{center}
+\textit{``she loves reading in the evening''}
+\end{center}
+
+\noindent which will be traced through every subsequent stage of the pipeline.
+
+% ---------------------------------------------------------------
+\subsection{Tokenization}
+% ---------------------------------------------------------------
+
+Before any numerical processing can take place, raw text must be divided into discrete units called \emph{tokens}. Early NMT systems tokenized at the word level, but this approach suffers from a combinatorial explosion of vocabulary size when applied to morphologically rich languages: every inflected form of a verb or noun becomes a distinct entry in the vocabulary. Rare forms encountered at test time may never have been seen during training, a problem known as the \emph{out-of-vocabulary} (OOV) problem.
+
+Modern systems address this with \emph{subword tokenization}, the most widely adopted variant of which is Byte Pair Encoding (BPE)~\cite{sennrich-etal-2016-neural}. BPE begins with a character-level vocabulary and iteratively merges the most frequently co-occurring pair of symbols until a target vocabulary size is reached. The result is a vocabulary that represents common words as single tokens while decomposing rare or morphologically complex words into smaller, reusable pieces. Applied to the running example, BPE might produce the segmentation
+
+\begin{center}
+\texttt{["she", "love", "s", "read", "ing", "in", "the", "even", "ing"]}
+\end{center}
+
+\noindent Here the word \textit{loves} is split into the stem \textit{love} and the suffix \textit{s}, and \textit{reading} is split into \textit{read} and \textit{ing}. These subword pieces are shared across many other words, so the model can generalize from seen to unseen forms. Subword tokenization is particularly valuable for agglutinative languages, where a single word can encode information that would require several words in English.
+
+% ---------------------------------------------------------------
+\subsection{Embedding}
+% ---------------------------------------------------------------
+
+Once the input has been tokenized, each token is mapped to a dense, real-valued vector called an \emph{embedding}. Embeddings serve as the bridge between the discrete symbolic world of tokens and the continuous vector space in which neural networks operate. Formally, given a vocabulary of size $|V|$, an embedding matrix $\mathbf{E} \in \mathbb{R}^{|V| \times d}$ maps each token index $i$ to a $d$-dimensional vector $\mathbf{e}_i \in \mathbb{R}^d$, where $d$ is a hyperparameter (typically 512 to 4096 in large models).
+
+The values in $\mathbf{E}$ are learned during training so that tokens with similar meanings or grammatical roles cluster together in the embedding space. For instance, the token \texttt{"she"} might be mapped to a vector such as
+
+\begin{equation}
+  \mathbf{e}_{\text{she}} = [0.12,\; {-0.44},\; 1.02,\; \ldots] \in \mathbb{R}^{d}
+\end{equation}
+
+\noindent Because the embedding space is continuous, arithmetic relationships between vectors emerge naturally from training, encoding both semantic and syntactic regularities.
+
+In addition to token embeddings, Transformer-based models inject \emph{positional encodings} into the input representation. Since the self-attention operation (described in the next section) is permutation-invariant, positional encodings supply the model with information about the order in which tokens appear in the sequence.
+
+% ---------------------------------------------------------------
+\subsection{Encoding}
+% ---------------------------------------------------------------
+
+The sequence of token embeddings is passed to the \emph{encoder}, a stack of identical layers each containing two sub-layers: a multi-head self-attention mechanism and a position-wise feed-forward network~\cite{vaswani2017attention}. Residual connections and layer normalization are applied around each sub-layer to stabilize training.
+
+The key operation is \emph{self-attention}, which allows every token to directly attend to every other token in the sequence, regardless of distance. For each token, the encoder computes a weighted sum of the values of all other tokens, where the weights are determined by the compatibility between that token's query vector and every other token's key vector:
+
+\begin{equation}
+  \text{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V})
+  = \text{softmax}\!\left(\frac{\mathbf{Q}\mathbf{K}^{\top}}{\sqrt{d_k}}\right)\mathbf{V}
+\end{equation}
+
+\noindent The scaling factor $\sqrt{d_k}$ prevents the dot products from growing too large in magnitude, which would cause the softmax to saturate and gradients to vanish. Multi-head attention runs $h$ such attention functions in parallel, each projecting the input into a different subspace, and concatenates the results. This allows the model to jointly attend to information from different representation subspaces at different positions.
+
+After passing through all encoder layers, each token is represented not by its original embedding but by a \emph{contextual embedding}---a vector that encodes not only the token's own meaning but also its role in the surrounding context. These contextual representations are then passed to the decoder via cross-attention.
+
+% ---------------------------------------------------------------
+\subsection{Decoding}
+% ---------------------------------------------------------------
+
+The \emph{decoder} generates the translation one token at a time in an \emph{autoregressive} fashion: at each step it conditions on all previously generated tokens as well as on the full set of encoder outputs. Like the encoder, the decoder is a stack of identical layers, but each layer contains three sub-layers: masked self-attention over the previously generated tokens, cross-attention over the encoder outputs, and a feed-forward network.
+
+The \emph{masked} self-attention ensures that the prediction for position $t$ depends only on positions $1, \ldots, t-1$, preserving the autoregressive property. The \emph{cross-attention} sub-layer is where the decoder aligns the source-language representations with the target-language sequence it is constructing. For the running example, the decoder produces tokens one by one:
+
+\begin{center}
+\textit{ella} $\rightarrow$ \textit{ama} $\rightarrow$ \textit{leer} $\rightarrow$ \textit{por} $\rightarrow$ \textit{la} $\rightarrow$ \textit{noche}
+\end{center}
+
+\noindent At each step, a linear projection followed by a softmax over the target vocabulary produces a probability distribution over all possible next tokens, and the most probable token is selected and appended to the output sequence.
+
+% ---------------------------------------------------------------
+\subsection{Detokenization}
+% ---------------------------------------------------------------
+
+The raw output of the decoder is a sequence of subword tokens in the target language. Before the translation can be presented to the user it must be \emph{detokenized}: the subword pieces are merged back into full words, and spacing and punctuation conventions specific to the target language are applied. For the running example, the token sequence
+
+\begin{center}
+\texttt{["ella", "ama", "leer", "por", "la", "noche"]}
+\end{center}
+
+\noindent is assembled into the final sentence
+
+\begin{center}
+\textit{``Ella ama leer por la noche.''}
+\end{center}
+
+\noindent Detokenization is straightforward for space-delimited languages but can be non-trivial for languages with different orthographic conventions.
+
+% ---------------------------------------------------------------
+\subsection{Final Output}
+% ---------------------------------------------------------------
+
+The detokenized string is returned to the user as the translated sentence in natural language form. From the user's perspective the pipeline is a black box: text goes in and text comes out. The research contributions of this thesis concern what happens inside that box---specifically, the structure of the encoder representations that the decoder relies on and what it would mean to make those representations more consistent across languages.
+
+% ---------------------------------------------------------------
+\section{Motivation}
+% ---------------------------------------------------------------
+
+\subsection{The Problem of Multiple Vector Languages}
+
+The encoder representations described above are not merely intermediate artifacts. They are the core signals the decoder uses to generate translations. This raises an important but underexplored question: if two sentences express the same meaning but originate from different languages, do their encoder outputs resemble one another?
+
+In current multilingual systems, the answer is generally no. The encoder effectively learns multiple \emph{vector languages}, each corresponding to a different natural language the model was trained on. The decoder must then learn to interpret these multiple vector languages and map each one into appropriate target-language sequences. This places a heavy burden on the decoder: it must simultaneously act as a universal translator for $n$ different input distributions, each with its own statistical quirks and representational patterns.
+
+\subsection{The Case for a Shared Intermediary Representation}
+
+From this perspective, multilingual translation can be understood as a two-step process: encode a sentence into a vector representation, then decode that vector into a target language. If encodings for semantically identical sentences are inconsistent across languages, the decoder must learn additional mapping complexity. But if encodings could be unified---that is, if the encoder consistently projected semantically similar sentences to similar regions of vector space regardless of their source language---then the decoder's task would become more focused and potentially much easier.
+
+This is particularly promising for low-resource languages. One of the biggest obstacles for these languages is the lack of sufficient parallel corpora for training. Yet if the encoder were trained to map all languages into a common representation, introducing a new low-resource language would require only aligning its encoder outputs with the shared vector space. The decoder would not need to be retrained to interpret an entirely new vector distribution. Such a strategy could significantly improve translation quality for languages that are historically underrepresented in machine translation research.
+
+\subsection{Research Question}
+
+The analysis above motivates a fundamental question that this thesis sets out to answer:
+
+\begin{quote}
+\textit{Can we introduce an encoder-alignment training objective that encourages vector similarity across languages, and can such an objective improve translation quality, especially for low-resource languages?}
+\end{quote}
+
+To investigate this question, we conduct an empirical analysis of cross-lingual encoder vector structure using a large pretrained multilingual model, propose a concrete alignment objective, and evaluate its effect on multilingual and low-resource translation benchmarks. The chapters that follow review the relevant background literature (Chapter~2), describe the experimental methodology (Chapter~3), present results (Chapter~4), and conclude with a discussion of findings and future directions (Chapter~5).

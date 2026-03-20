@@ -82,7 +82,8 @@ def evaluate_experiment(experiment_dir):
         model.cuda()
     lang_codes = harvest_language_codes(config)
     tokenizer = initialize_tokenizer(config)
-    pmap = load_permutation_map(Path(experiment_dir) / "permutations.json")
+    pmap_path = Path(experiment_dir) / "permutations.json"
+    pmap = load_permutation_map(pmap_path) if pmap_path.exists() else dict()
     test_data = MixtureOfBitexts.create_from_config(config, "test", only_once_thru=True)
     tokenized_test = TokenizedMixtureOfBitexts(
         test_data, tokenizer, lang_codes=lang_codes, permutation_map=pmap

@@ -38,7 +38,12 @@ def plot_losses(train_x, train_y, dev_x, dev_y, out_path: str):
 
 
 def finetune(model, train_data1, dev_data, model_dir, ft_params, goal_lang_key="en"):
-    def compute_loss(batch):
+    def mean_pool(encodings, attn_mask):
+        # encodings: (batch, seq_len, hidden); attn_mask: (batch, seq_len)
+        mask = attn_mask.unsqueeze(-1).float()
+        return (encodings * mask).sum(dim=1) / mask.sum(dim=1)
+
+    def compute_loss(batch, temperature=0.1):
         encoder.eval()
         sents, lang, goal_encodings, goal_attn_mask = batch
         sent_attn_mask = sents["attention_mask"].to(encoder.device)
@@ -47,47 +52,22 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params, goal_lang_key="
         goal_attn_mask = goal_attn_mask.to(encoder.device)
         sent_encodings = encoder(**sents).last_hidden_state
 
-        if lang != ("europarl", goal_lang_key):
-            out1, _ = attn(
-                sent_encodings, goal_encodings, sent_attn_mask, goal_attn_mask
-            )
-            token_scores1 = 1 - F.cosine_similarity(sent_encodings, out1, dim=-1)
-            token_scores1 = token_scores1 * sent_attn_mask
-            loss1 = token_scores1.sum() / sent_attn_mask.sum()
-            out2, _ = attn(
-                goal_encodings,
-                sent_encodings,
-                goal_attn_mask,
-                sents["attention_mask"],
-            )
-            token_scores2 = 1 - F.cosine_similarity(goal_encodings, out2, dim=-1)
-            token_scores2 = token_scores2 * goal_attn_mask
-            loss2 = token_scores2.sum() / goal_attn_mask.sum()
+        # sentence-level representations via mean pooling
+        src_vecs = mean_pool(sent_encodings, sent_attn_mask)   # (B, H)
+        tgt_vecs = mean_pool(goal_encodings, goal_attn_mask)   # (B, H)
 
-            token_norm_diffs = (
-                torch.norm(out2, dim=-1) - torch.norm(goal_encodings, dim=-1)
-            ) ** 2
-            loss4 = torch.sqrt(
-                (
-                    torch.mean(torch.norm(sent_encodings, dim=-1))
-                    - torch.mean(torch.norm(goal_encodings, dim=-1))
-                )
-                ** 2
-            )
-            loss = loss4 + ((loss1 + loss2) / 2.0)
-        else:
-            token_scores = 1 - F.cosine_similarity(
-                sent_encodings, goal_encodings, dim=-1
-            )
-            token_scores = token_scores * sent_attn_mask
-            loss1 = token_scores.sum() / sent_attn_mask.sum()
-            token_norm_diffs = (
-                torch.norm(sent_encodings, dim=-1) - torch.norm(goal_encodings, dim=-1)
-            ) ** 2
-            token_norm_diffs = token_norm_diffs * sent_attn_mask
-            loss2 = token_norm_diffs.sum() / sent_attn_mask.sum()
-            loss = loss1 + loss2
-        return loss
+        # L2 normalize
+        src_vecs = F.normalize(src_vecs, dim=-1)
+        tgt_vecs = F.normalize(tgt_vecs, dim=-1)
+
+        # similarity matrix: (B, B), entry [i,j] = sim(src_i, tgt_j)
+        sim = torch.matmul(src_vecs, tgt_vecs.T) / temperature
+
+        # for each src_i, the positive is tgt_i (diagonal)
+        labels = torch.arange(sim.size(0), device=sim.device)
+        loss_src = F.cross_entropy(sim, labels)
+        loss_tgt = F.cross_entropy(sim.T, labels)
+        return (loss_src + loss_tgt) / 2.0
 
     logger(f"Training {model_dir}")
     model.save_pretrained(model_dir)
