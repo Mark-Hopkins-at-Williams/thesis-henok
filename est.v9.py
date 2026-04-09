@@ -46,28 +46,42 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params, goal_lang_key="
     def compute_loss(batch, temperature=0.1):
         encoder.eval()
         sents, lang, goal_encodings, goal_attn_mask = batch
+
         sent_attn_mask = sents["attention_mask"].to(encoder.device)
         sents = {k: v.to(encoder.device) for k, v in sents.items()}
         goal_encodings = goal_encodings.to(encoder.device)
         goal_attn_mask = goal_attn_mask.to(encoder.device)
+
         sent_encodings = encoder(**sents).last_hidden_state
 
-        # sentence-level representations via mean pooling
-        src_vecs = mean_pool(sent_encodings, sent_attn_mask)   # (B, H)
-        tgt_vecs = mean_pool(goal_encodings, goal_attn_mask)   # (B, H)
+        # R(xi): mean-pooled trainable encoder output on source (lang1)
+        src_vecs = mean_pool(sent_encodings, sent_attn_mask)  # (B, H)
 
-        # L2 normalize
+        # R(xj) / R(yj): mean-pooled static encoder output on goal (lang2)
+        tgt_vecs = mean_pool(goal_encodings, goal_attn_mask)  # (B, H)
+
+        # cosine similarity
         src_vecs = F.normalize(src_vecs, dim=-1)
         tgt_vecs = F.normalize(tgt_vecs, dim=-1)
 
-        # similarity matrix: (B, B), entry [i,j] = sim(src_i, tgt_j)
-        sim = torch.matmul(src_vecs, tgt_vecs.T) / temperature
+        # sim[i, j] = cos(R(xi), R(tgt_j)) / τ
+        sim = torch.matmul(src_vecs, tgt_vecs.T) / temperature  # (B, B)
 
-        # for each src_i, the positive is tgt_i (diagonal)
-        labels = torch.arange(sim.size(0), device=sim.device)
-        loss_src = F.cross_entropy(sim, labels)
-        loss_tgt = F.cross_entropy(sim.T, labels)
-        return (loss_src + loss_tgt) / 2.0
+        B = sim.size(0)
+
+        # sim+: positive pair similarity — diagonal (xi matched with its correct translation xj)
+        numerator = torch.diagonal(sim)  # (B,)
+
+        # sim-: negatives only — mask out the diagonal so yj ≠ xj
+        mask = torch.eye(B, dtype=torch.bool, device=sim.device)
+        sim_neg = sim.masked_fill(mask, float('-inf'))
+
+        # log Σ_{yj} exp(sim-(R(xi), R(yj)) / τ)
+        log_denominator = torch.logsumexp(sim_neg, dim=1)  # (B,)
+
+        # -Σ_{xi,xj ∈ D} log [ exp(sim+/τ) / Σ_{yj} exp(sim-/τ) ]
+        loss = (-numerator + log_denominator).mean()
+        return loss
 
     logger(f"Training {model_dir}")
     model.save_pretrained(model_dir)
@@ -85,7 +99,8 @@ def finetune(model, train_data1, dev_data, model_dir, ft_params, goal_lang_key="
     dev_plot_x, dev_plot_y = [], []
     best_dev_loss, steps_since_best = None, 0
     encoder = model.model.encoder
-    attn = SimpleAttention()
+    #attn not needed for contrastive loss w pan et al
+    #attn = SimpleAttention()
     for i in tqdm(range(ft_params.num_training_steps)):
         try:
             loss = compute_loss(train_data1.next_batch())
