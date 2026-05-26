@@ -8,7 +8,6 @@ import evaluate
 import json
 from myutil import logger
 from pathlib import Path
-from permutations import load_permutation_map
 from transformers import AutoModelForSeq2SeqLM
 
 
@@ -135,6 +134,7 @@ def evaluate_experiment(experiment_dir):
     logger("...scoring complete.")
 
 
+# TODO: update
 def evaluate_model(model_name, config_file):
     with open(config_file) as reader:
         config = json.load(reader)

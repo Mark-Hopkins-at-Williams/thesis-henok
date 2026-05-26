@@ -4,8 +4,6 @@ import torch
 from torch.utils.data import DataLoader, IterableDataset
 from torch.nn.utils.rnn import pad_sequence
 from typing import Dict, Tuple, List, Optional, Iterator
-from transformers import AutoTokenizer
-
 
 CorpusId = Tuple[str, str]  # typedef
 

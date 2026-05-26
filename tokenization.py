@@ -79,22 +79,24 @@ class NllbTokenizer(HuggingfaceTokenizer):
 
 
 class ByteTokenizer(Tokenizer):
-    def __init__(self, encoding="utf-8", max_length=None, offset=0):
-        pass
+    def __init__(self, max_length=None):
+        self.special_tokens = {"</s>": 256, "eng_Latn": 257, "fra_Latn": 258}
+        self.max_length = max_length
 
     def __call__(self, sent: str, lang_code="eng_Latn"):
-        # print(sent)
-        self.src_lang = lang_code
         tokens = [byte for byte in sent.encode()]
-        result = [256] + tokens + [257]
-        # print(len(result))
+        if self.max_length is not None and len(tokens) > self.max_length - 2:
+            tokens = tokens[: self.max_length - 2]
+        result = (
+            [self.special_tokens[lang_code]] + tokens + [self.special_tokens["</s>"]]
+        )
         return result
 
     def __len__(self):
-        return 258
+        return 256 + len(self.special_tokens)
 
     def get_special_tokens(self):
-        return {"BOS": 257, "EOS": 258}
+        return self.special_tokens
 
     def batch_decode(self, token_ids):
         pass

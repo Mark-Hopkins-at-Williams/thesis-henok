@@ -114,7 +114,10 @@ def finetune(model, train_data, dev_data, model_dir, ft_params):
                     scheduler.step()
         except RuntimeError as e:
             if "out of memory" in str(e).lower():
-                logger("GPU OOM during training step. Skipping batch.", to_stderr=True)
+                logger(
+                    f"\nGPU OOM during training step. Skipping batch ({x['input_ids'].shape}).",
+                    to_stderr=True,
+                )
                 optimizer.zero_grad(set_to_none=True)
                 torch.cuda.empty_cache()
                 torch.cuda.ipc_collect()

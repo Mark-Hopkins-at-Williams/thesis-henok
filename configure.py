@@ -79,6 +79,7 @@ def harvest_language_codes(config):
     return lang_codes
 
 
+# TODO: update
 def initialize_tokenizer(config):
     # TODO: generalize to separate src/tgt tokenizers
     params = config["finetuning_parameters"]
@@ -120,7 +121,7 @@ def create_bitexts(config, cipher_map=None):
                 tokenizer_config["model"], max_length=tokenizer_config["max_length"]
             )
         elif tokenizer_config["type"] == "byte":
-            tokenizer = ByteTokenizer()
+            tokenizer = ByteTokenizer(max_length=tokenizer_config["max_length"])
         else:
             raise Exception(f"Unrecognized tokenizer type: {tokenizer_config["type"]}")
         tokenizer_map[tokenizer_name] = tokenizer
