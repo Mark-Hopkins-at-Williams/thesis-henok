@@ -60,7 +60,8 @@ class HuggingfaceTokenizer(Tokenizer):
             truncation=True,
             max_length=self.max_length if self.max_length is not None else None,
         )
-        return result["input_ids"].squeeze().tolist()
+        retval = result["input_ids"].squeeze().tolist()
+        return retval
 
     def get_special_tokens(self):
         return self.special_tokens
@@ -75,3 +76,41 @@ class HuggingfaceTokenizer(Tokenizer):
 class NllbTokenizer(HuggingfaceTokenizer):
     def __init__(self, size, max_length=None):
         super().__init__(f"facebook/nllb-200-distilled-{size}", max_length=max_length)
+
+
+class ByteTokenizer(Tokenizer):
+    def __init__(self, encoding="utf-8", max_length=None, offset=0):
+        pass
+
+    def __call__(self, sent: str, lang_code="eng_Latn"):
+        # print(sent)
+        self.src_lang = lang_code
+        tokens = [byte for byte in sent.encode()]
+        result = [256] + tokens + [257]
+        # print(len(result))
+        return result
+
+    def __len__(self):
+        return 258
+
+    def get_special_tokens(self):
+        return {"BOS": 257, "EOS": 258}
+
+    def batch_decode(self, token_ids):
+        pass
+
+    #     results = []  # list of strings, each of which is decoded sentence
+
+    #     non_printables = set(self.special_tokens)
+
+    #     for sent in token_ids:
+    #         # Convert all token IDs in one go
+    #         decoded_tokens = [self.reverse_mappings[id.item()] for id in sent]
+
+    #         # Filter out special tokens and make string representation
+    #         decoded = " ".join(
+    #             tok for tok in decoded_tokens if tok not in non_printables
+    #         )
+    #         results.append(decoded)
+
+    #     return results

@@ -9,7 +9,7 @@ from permutations import (
     load_permutation_map,
 )
 import shutil
-from tokenization import NllbTokenizer, HuggingfaceTokenizer
+from tokenization import NllbTokenizer, HuggingfaceTokenizer, ByteTokenizer
 from transformers import AutoTokenizer
 from corpora import (
     Corpus,
@@ -119,6 +119,8 @@ def create_bitexts(config, cipher_map=None):
             tokenizer = HuggingfaceTokenizer(
                 tokenizer_config["model"], max_length=tokenizer_config["max_length"]
             )
+        elif tokenizer_config["type"] == "byte":
+            tokenizer = ByteTokenizer()
         else:
             raise Exception(f"Unrecognized tokenizer type: {tokenizer_config["type"]}")
         tokenizer_map[tokenizer_name] = tokenizer
