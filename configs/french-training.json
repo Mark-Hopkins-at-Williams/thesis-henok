@@ -7,11 +7,10 @@
         "freeze_decoder": false,
         "report_every": 500,
         "validate_every": 500,
-        "patience": 5,
         "batch_size": 32,
         "src_pad_id": 0,
         "tgt_pad_id": -100,
-        "num_steps": 219995
+        "num_steps": 1000000
     },
     "tokenizers": {
         "nllb": {
@@ -22,6 +21,11 @@
         "byte": {
             "type": "byte",
             "max_length": 192
+        },
+        "ac": {
+            "type": "autocompleting",
+            "model": "experiments/autocomplete-v1",
+            "max_length": 192
         }
     },
     "corpora": {
@@ -31,7 +35,7 @@
             "dev": "/mnt/storage/swexler/thesis-wexler/examples/french-model_10_28_25/fr-en/dev.eng",
             "test": "/mnt/storage/swexler/thesis-wexler/examples/french-model_10_28_25/fr-en/test.eng",
             "encipherment": "0",
-            "tokenizer": "nllb"
+            "tokenizer": "ac"
         },
         "wmt-fra": {
             "lang_code": "fra_Latn",

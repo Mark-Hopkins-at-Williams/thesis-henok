@@ -1,0 +1,52 @@
+{
+    "model_dir": "experiments/zh-en-ac",
+    "finetuning_parameters": {
+        "base_model": "facebook/nllb-200-distilled-600M",
+        "finetune": false,
+        "freeze_encoder": false,
+        "freeze_decoder": false,
+        "report_every": 10000,
+        "validate_every": 10000,
+        "batch_size": 32,
+        "src_pad_id": 0,
+        "tgt_pad_id": -100,
+        "num_steps": 1000000
+    },
+    "tokenizers": {
+        "nllb": {
+            "type": "huggingface",
+            "model": "facebook/nllb-200-distilled-600M",
+            "max_length": 192
+        },
+        "ac": {
+            "type": "autocompleting",
+            "model": "experiments/zh-autocomplete-v1",
+            "max_length": 192,
+            "max_length_encoding": 8
+        }
+    },
+    "corpora": {
+        "wmt-en": {
+            "lang_code": "lang_Lang",
+            "train": "/mnt/storage/hopkins/data/wmt19/zh-en/organized/train.en",
+            "dev": "/mnt/storage/hopkins/data/wmt19/zh-en/dev.en",
+            "test": "/mnt/storage/hopkins/data/wmt19/zh-en/test.en",
+            "encipherment": "0",
+            "tokenizer": "nllb"
+        },
+        "wmt-zh": {
+            "lang_code": "lang_Lang",
+            "train": "/mnt/storage/hopkins/data/wmt19/zh-en/organized/train.zh",
+            "dev": "/mnt/storage/hopkins/data/wmt19/zh-en/dev.zh",
+            "test": "/mnt/storage/hopkins/data/wmt19/zh-en/test.zh",
+            "encipherment": "0",
+            "tokenizer": "ac"
+        }
+    },
+    "bitexts": [
+        {
+            "src": "wmt-zh",
+            "tgt": "wmt-en"
+        }
+    ]
+}

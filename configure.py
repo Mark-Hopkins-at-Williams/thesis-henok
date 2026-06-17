@@ -20,6 +20,7 @@ from corpora import (
     CodeswitchedBitext,
     BatchedBitext,
 )
+from compressor import load_autocompleting_tokenizer
 
 
 @dataclass
@@ -122,6 +123,16 @@ def create_bitexts(config, cipher_map=None):
             )
         elif tokenizer_config["type"] == "byte":
             tokenizer = ByteTokenizer(max_length=tokenizer_config["max_length"])
+        elif tokenizer_config["type"] == "autocompleting":
+            tokenizer = load_autocompleting_tokenizer(
+                tokenizer_config["model"],
+                max_length=tokenizer_config["max_length"],
+                max_length_encoding=(
+                    tokenizer_config["max_length_encoding"]
+                    if "max_length_encoding" in tokenizer_config
+                    else 1
+                ),
+            )
         else:
             raise Exception(f"Unrecognized tokenizer type: {tokenizer_config["type"]}")
         tokenizer_map[tokenizer_name] = tokenizer

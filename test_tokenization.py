@@ -84,6 +84,18 @@ class TestTokenization(unittest.TestCase):
         self.assertEqual(special_tokens["<unk>"], 3)
         self.assertEqual(special_tokens["<mask>"], 256203)
 
+    def test_autocompleting_tokenizer1(self):
+        with open("test_files/lang1.txt") as reader:
+            lines = [line.strip() for line in reader.readlines()]
+        tokenizer = NllbTokenizer("600M")
+        tokens = tokenizer(lines[0], lang_code="eng_Latn")
+        expected = [
+            [256047, 1617, 7875, 228, 55501, 349, 227879, 248075, 2],
+            [256047, 11873, 272, 22665, 9, 28487, 248075, 2, 1],
+            [256047, 13710, 18379, 43583, 2299, 248075, 2, 1, 1],
+        ]
+        self.assertEqual(tokens, expected_lang1_token_ids)
+
 
 if __name__ == "__main__":
     unittest.main()

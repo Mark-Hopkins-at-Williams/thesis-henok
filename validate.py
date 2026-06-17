@@ -26,7 +26,7 @@ def translate(
     src_tokenized = {k: v.to(model.device) for k, v in src_tokenized.items()}
     result = model.generate(
         **src_tokenized,
-        forced_bos_token_id=tgt_tokenizer.get_special_tokens()[tgt_lang],
+        forced_bos_token_id=3,  # tgt_tokenizer.get_special_tokens()[tgt_lang],
         max_new_tokens=int(a + b * src_tokenized["input_ids"].shape[1]),
         num_beams=num_beams,
         **kwargs,
