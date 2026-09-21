@@ -1,0 +1,51 @@
+{
+    "model_dir": "experiments/example",
+    "finetuning_parameters": {
+        "base_model": "facebook/nllb-200-distilled-600M",
+        "finetune": true,
+        "freeze_encoder": false,
+        "freeze_decoder": false,
+        "report_every": 500,
+        "validate_every": 500,
+        "patience": 5,
+        "batch_size": 32,
+        "src_pad_id": 0,
+        "tgt_pad_id": -100,
+        "num_steps": 20000
+    },
+    "tokenizers": {
+        "nllb": {
+            "type": "huggingface",
+            "model": "facebook/nllb-200-distilled-600M",
+            "max_length": 512
+        }
+    },
+    "corpora": {
+        "europarl-en": {
+            "lang_code": "eng_Latn",
+            "train": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/train.en",
+            "dev": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/dev.en",
+            "test": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/test.en",
+            "encipherment": "0",
+            "tokenizer": "nllb"
+        },
+        "europarl-de": {
+            "lang_code": "tsn_Latn",
+            "train": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/train.de",
+            "dev": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/dev.de",
+            "test": "/mnt/storage/hopkins/research/encoder-decoder-finetuning/data/test.de",
+            "encipherment": "1",
+            "tokenizer": "nllb"
+        }
+    },
+    "bitexts": [
+        {
+            "src": "europarl-en",
+            "tgt": "europarl-de",
+            "train_lines": [
+                0,
+                16834
+            ]
+        }
+    ]
+}

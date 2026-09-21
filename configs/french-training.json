@@ -1,0 +1,59 @@
+{
+    "model_dir": "experiments/french-training",
+    "finetuning_parameters": {
+        "base_model": "facebook/nllb-200-distilled-600M",
+        "finetune": false,
+        "freeze_encoder": false,
+        "freeze_decoder": false,
+        "report_every": 500,
+        "validate_every": 500,
+        "batch_size": 32,
+        "src_pad_id": 0,
+        "tgt_pad_id": -100,
+        "num_steps": 1000000
+    },
+    "tokenizers": {
+        "nllb": {
+            "type": "huggingface",
+            "model": "facebook/nllb-200-distilled-600M",
+            "max_length": 192
+        },
+        "byte": {
+            "type": "byte",
+            "max_length": 192
+        },
+        "ac": {
+            "type": "autocompleting",
+            "model": "experiments/autocomplete-v1",
+            "max_length": 192
+        }
+    },
+    "corpora": {
+        "wmt-eng": {
+            "lang_code": "eng_Latn",
+            "train": "/mnt/storage/swexler/thesis-wexler/examples/french-data-7-mil/organized/train.eng",
+            "dev": "/mnt/storage/swexler/thesis-wexler/examples/french-model_10_28_25/fr-en/dev.eng",
+            "test": "/mnt/storage/swexler/thesis-wexler/examples/french-model_10_28_25/fr-en/test.eng",
+            "encipherment": "0",
+            "tokenizer": "ac"
+        },
+        "wmt-fra": {
+            "lang_code": "fra_Latn",
+            "train": "/mnt/storage/swexler/thesis-wexler/examples/french-data-7-mil/organized/train.fr",
+            "dev": "/mnt/storage/swexler/thesis-wexler/examples/french-model_10_28_25/fr-en/dev.fr",
+            "test": "/mnt/storage/swexler/thesis-wexler/examples/french-model_10_28_25/fr-en/test.fr",
+            "encipherment": "0",
+            "tokenizer": "nllb"
+        }
+    },
+    "bitexts": [
+        {
+            "src": "wmt-eng",
+            "tgt": "wmt-fra",
+            "train_lines": [
+                0,
+                8000000
+            ]
+        }
+    ]
+}

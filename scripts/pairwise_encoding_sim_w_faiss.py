@@ -1,10 +1,12 @@
 import sys
 import os
+
 sys.path.append(os.path.abspath(".."))
 import json
 import torch
 from collections import defaultdict
 import matplotlib
+
 matplotlib.use("Agg")
 import faiss
 from ..corpora import MixtureOfBitexts, TokenizedMixtureOfBitexts
@@ -32,19 +34,21 @@ def compute_language_embeddings(model, tokenized_data, lang_codes):
         batch = tokenized_data.next_batch()
         while batch is not None:
             x, _, src_lang, _ = batch
-            
+
             # Source embeddings: first (and only) sentence in batch, all tokens
             x = x.to(model.device)
-            x_enc = encoder(**x).last_hidden_state[0].cpu().numpy()  # [seq_len, hidden_dim]
-            embeddings[lang_codes[src_lang]].append(x_enc)           
-            
+            x_enc = (
+                encoder(**x).last_hidden_state[0].cpu().numpy()
+            )  # [seq_len, hidden_dim]
+            embeddings[lang_codes[src_lang]].append(x_enc)
+
             batch = tokenized_data.next_batch()
     return dict(embeddings)
 
 
 def compute_faiss_heatmap(embeddings):
     """
-    embeddings: dict lang_code -> (num_tokens, hidden_dim)
+    embeddings: dict lang_code -> list of (num_tokens, hidden_dim) embeddings
     lang_list: ordered list of languages
     Returns a matrix of average nearest-neighbor distances (not symmetric).
     """
@@ -53,26 +57,26 @@ def compute_faiss_heatmap(embeddings):
     distances = defaultdict(list)
     heatmap = np.zeros((n, n))
 
-    for i, lang_i in tqdm(enumerate(lang_list)):        
+    for i, lang_i in tqdm(enumerate(lang_list)):
         for sent_index in range(len(embeddings[lang_i])):
-            xb = embeddings[lang_i][sent_index]        
+            xb = embeddings[lang_i][sent_index]
             index = faiss.IndexFlatL2(xb.shape[1])
             index.add(xb)
             for j, lang_j in enumerate(lang_list):
-                xq = embeddings[lang_j][sent_index].astype('float32')
+                xq = embeddings[lang_j][sent_index].astype("float32")
                 D, I = index.search(xq, 1)  # nearest neighbor distances
                 avg_distance = D.mean()
                 distances[(i, j)].append(avg_distance)
-    for (i, j) in distances:
-        heatmap[i, j] = sum(distances[(i,j)]) / len(distances[(i,j)])        
+    for i, j in distances:
+        heatmap[i, j] = sum(distances[(i, j)]) / len(distances[(i, j)])
 
     return heatmap, lang_list
-
 
 
 def plot_clustermap(matrix, labels, out_file="language_clustermap.png"):
     # Convert the matrix to a DataFrame for labeled axes
     import pandas as pd
+
     df = pd.DataFrame(matrix, index=labels, columns=labels)
 
     # Create the clustermap
@@ -86,7 +90,9 @@ def plot_clustermap(matrix, labels, out_file="language_clustermap.png"):
 
     # Customize titles and layout
     plt.suptitle("FAISS Avg Nearest-Neighbor L2 Distances (Fine-Grained)", y=1.02)
-    g.ax_heatmap.set_xticklabels(g.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
+    g.ax_heatmap.set_xticklabels(
+        g.ax_heatmap.get_xticklabels(), rotation=45, ha="right"
+    )
     g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_yticklabels(), rotation=0)
 
     # Save and show
@@ -94,8 +100,9 @@ def plot_clustermap(matrix, labels, out_file="language_clustermap.png"):
     plt.savefig(out_file, bbox_inches="tight")
     print(f"Saved clustermap to {out_file}")
 
+
 def logger(s):
-    sys.stderr.write(f'{s}\n')
+    sys.stderr.write(f"{s}\n")
     sys.stderr.flush()
 
 
@@ -106,38 +113,40 @@ def main():
 
     # Extract language codes
     lang_codes = {
-        (c, k): config['corpora'][c][k]['lang_code']
-        for c in config['corpora'] for k in config['corpora'][c]
+        (c, k): config["corpora"][c][k]["lang_code"]
+        for c in config["corpora"]
+        for k in config["corpora"][c]
     }
 
     # Load model
-    logger('loading model...')
-    
+    logger("loading model...")
+
     model_name = config["finetuning_parameters"]["base_model"]
     model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
     if USE_CUDA:
         model.cuda()
 
     # Load dev data and tokenize
-    logger('tokenizing dev data...')
+    logger("tokenizing dev data...")
     dev_data = MixtureOfBitexts.create_from_config(config, "dev", only_once_thru=True)
-    
-    if model_name == "facebook/nllb-200-distilled-600M":   
-        tokenizer = NllbTokenizer("600M", max_length=128) # set max length?
-    elif model_name == "facebook/nllb-200-distilled-1.3B": 
+
+    if model_name == "facebook/nllb-200-distilled-600M":
+        tokenizer = NllbTokenizer("600M", max_length=128)  # set max length?
+    elif model_name == "facebook/nllb-200-distilled-1.3B":
         tokenizer = NllbTokenizer("1.3B", max_length=128)
     else:
         tokenizer = HuggingfaceTokenizer(model_name, max_length=128)
-    
-    tokenized_dev = TokenizedMixtureOfBitexts(dev_data, tokenizer,
-                                              lang_codes=lang_codes, permutation_map={})
+
+    tokenized_dev = TokenizedMixtureOfBitexts(
+        dev_data, tokenizer, lang_codes=lang_codes, permutation_map={}
+    )
 
     # Compute fine-grained embeddings
-    logger('computing embeddings...')
+    logger("computing embeddings...")
     embeddings = compute_language_embeddings(model, tokenized_dev, lang_codes)
 
     # Compute FAISS heatmap
-    logger('computing heatmap...')
+    logger("computing heatmap...")
     heatmap, lang_list = compute_faiss_heatmap(embeddings)
 
     # Plot heatmap

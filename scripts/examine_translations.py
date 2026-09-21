@@ -1,7 +1,7 @@
 import json
 
 BASE_DIR = "experiments"
-EXP_DIR = "seed-v0"
+EXP_DIR = "enciphered_spa_to_spa-v6"
 
 
 with open(f"{BASE_DIR}/{EXP_DIR}/translations.json") as reader:

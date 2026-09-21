@@ -1,11 +1,11 @@
 import argparse
 from attention import SimpleAttention
 from configure import create_experiment_dir
-from configure import create_permutations
-from configure import harvest_language_codes
-from configure import initialize_tokenizer
 from configure import read_finetuning_params
-from corpora import MixtureOfBitexts, TokenizedMixtureOfBitexts
+from configure import create_bitexts
+from corpora import MixtureOfTextAndGoalEncodings
+from pathlib import Path
+from permutations import save_permutation_map
 import json
 import matplotlib
 import matplotlib.pyplot as plt
@@ -14,8 +14,6 @@ from myutil import logger
 from myutil import prepare_model_for_finetuning
 import numpy as np
 import os
-from pathlib import Path
-from permutations import save_permutation_map
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -37,61 +35,80 @@ def plot_losses(train_x, train_y, dev_x, dev_y, out_path: str):
     plt.savefig(out_path)
 
 
-def finetune(model, train_data, dev_data, model_dir, ft_params):
+def finetune(model, train_data1, dev_data, model_dir, ft_params):
+    def compute_loss(batch):
+        encoder.eval()
+        sents, lang, goal_encodings, goal_attn_mask = batch
+        sent_attn_mask = sents["attention_mask"].to(encoder.device)
+        sents = {k: v.to(encoder.device) for k, v in sents.items()}
+        goal_encodings = goal_encodings.to(encoder.device)
+        goal_attn_mask = goal_attn_mask.to(encoder.device)
+        sent_encodings = encoder(**sents).last_hidden_state
+        if lang != "spa_Latn":
+            out1, _ = attn(
+                sent_encodings, goal_encodings, sent_attn_mask, goal_attn_mask
+            )
+            token_scores1 = 1 - F.cosine_similarity(sent_encodings, out1, dim=-1)
+            token_scores1 = token_scores1 * sent_attn_mask
+            loss1 = token_scores1.sum() / sent_attn_mask.sum()
+            out2, _ = attn(
+                goal_encodings,
+                sent_encodings,
+                goal_attn_mask,
+                sents["attention_mask"],
+            )
+            token_scores2 = 1 - F.cosine_similarity(goal_encodings, out2, dim=-1)
+            token_scores2 = token_scores2 * goal_attn_mask
+            loss2 = token_scores2.sum() / goal_attn_mask.sum()
+
+            token_norm_diffs = (
+                torch.norm(out2, dim=-1) - torch.norm(goal_encodings, dim=-1)
+            ) ** 2
+            loss4 = torch.sqrt(
+                (
+                    torch.mean(torch.norm(sent_encodings, dim=-1))
+                    - torch.mean(torch.norm(goal_encodings, dim=-1))
+                )
+                ** 2
+            )
+            loss = loss4 + ((loss1 + loss2) / 2.0)
+        else:
+            token_scores = 1 - F.cosine_similarity(
+                sent_encodings, goal_encodings, dim=-1
+            )
+            token_scores = token_scores * sent_attn_mask
+            loss1 = token_scores.sum() / sent_attn_mask.sum()
+            token_norm_diffs = (
+                torch.norm(sent_encodings, dim=-1) - torch.norm(goal_encodings, dim=-1)
+            ) ** 2
+            token_norm_diffs = token_norm_diffs * sent_attn_mask
+            loss2 = token_norm_diffs.sum() / sent_attn_mask.sum()
+            loss = loss1 + loss2
+        return loss
+
     logger(f"Training {model_dir}")
-    if ft_params.should_finetune:
-        optimizer = Adafactor(
-            [p for p in model.parameters() if p.requires_grad],
-            scale_parameter=False,
-            relative_step=False,
-            lr=1e-4,
-            clip_threshold=1.0,
-            weight_decay=1e-3,
-        )
-        scheduler = get_constant_schedule_with_warmup(optimizer, num_warmup_steps=1000)
-    else:  # use different optimizer for training from scratch
-        optimizer = Adafactor(
-            model.parameters(),
-            scale_parameter=True,
-            relative_step=True,
-            lr=None,  # required when using relative_step
-            clip_threshold=1.0,
-            weight_decay=0.01,
-        )
-        scheduler = None
+    model.save_pretrained(model_dir)
+    optimizer = Adafactor(
+        [p for p in model.parameters() if p.requires_grad],
+        scale_parameter=False,
+        relative_step=False,
+        lr=1e-4,
+        clip_threshold=1.0,
+        weight_decay=1e-3,
+    )
+    scheduler = get_constant_schedule_with_warmup(optimizer, num_warmup_steps=1000)
     cleanup()
     train_losses, train_plot_x, train_plot_y = [], [], []
     dev_plot_x, dev_plot_y = [], []
     best_dev_loss, steps_since_best = None, 0
     encoder = model.model.encoder
     attn = SimpleAttention()
+    train_data_iter = iter(train_data1)
     for i in tqdm(range(ft_params.num_training_steps)):
         try:
-            encoder.eval()
-            src, tgt, _, _ = train_data.next_batch()
-            src = src.to(encoder.device)
-            tgt = tgt.to(encoder.device)
-            src_enc = encoder(**src).last_hidden_state
-            tgt_enc = encoder(**tgt).last_hidden_state
-            out, _ = attn(src_enc, tgt_enc)
-            token_scores = -torch.log(
-                1 + F.cosine_similarity(src_enc, out, dim=-1) / 2
-            )  # [seq_len]
-            loss = token_scores.mean()
+            loss = compute_loss(next(train_data_iter))
             loss.backward()
             train_losses.append(loss.item())
-            optimizer.step()
-            optimizer.zero_grad(set_to_none=True)
-            if scheduler is not None:
-                scheduler.step()
-
-            model.train()
-            # x, y, _, _ = train_data.next_batch()
-            # x = x.to(model.device)
-            # y = y.to(model.device)
-            loss = model(**src, labels=tgt.input_ids).loss
-            loss.backward()
-            # train_losses.append(loss.item())
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
             if scheduler is not None:
@@ -112,22 +129,24 @@ def finetune(model, train_data, dev_data, model_dir, ft_params):
         if i > 0 and i % ft_params.validate_every == 0:
             logger("Validating...")
 
-            def evaluate(model, dev_data, batches: int = 100):
-                model.eval()
-                dev_losses = []
+            def evaluate(dev_data):
+                dev_data.restart()
+                dev_losses = dict()
                 with torch.no_grad():
-                    for _ in range(batches):
-                        x, y, _, _ = dev_data.next_batch()
-                        x = x.to(model.device)
-                        y = y.to(model.device)
-                        loss = model(**x, labels=y.input_ids).loss
-                        dev_losses.append(loss.item())
-                return np.mean(dev_losses)
+                    for batch in dev_data:
+                        sents, lang, goal_encodings, goal_attn_mask = batch
+                        loss = compute_loss(batch)
+                        if lang not in dev_losses:
+                            dev_losses[lang] = []
+                        dev_losses[lang].append(loss.item())
 
-            dev_loss = evaluate(model, dev_data)
-            logger(f"Dev loss: {dev_loss:.4f}")
+                return {k: np.mean(dev_losses[k]) for k in dev_losses}
+
+            dev_loss = evaluate(dev_data)
+            for lang in dev_loss:
+                logger(f"Dev loss ({lang}): {dev_loss[lang]:.2f}")
             dev_plot_x.append(i)
-            dev_plot_y.append(dev_loss)
+            dev_plot_y.append(dev_loss["tsn_Latn"])
             plot_losses(
                 train_plot_x,
                 train_plot_y,
@@ -135,9 +154,9 @@ def finetune(model, train_data, dev_data, model_dir, ft_params):
                 dev_plot_y,
                 os.path.join(model_dir, "training.png"),
             )
-            if best_dev_loss is None or dev_loss < best_dev_loss:
+            if best_dev_loss is None or dev_loss["tsn_Latn"] < best_dev_loss:
                 logger("Saving new best model.")
-                best_dev_loss = dev_loss
+                best_dev_loss = dev_loss["tsn_Latn"]
                 steps_since_best = 0
                 model.save_pretrained(model_dir)
             else:
@@ -161,33 +180,19 @@ def main():
 
     ft_params = read_finetuning_params(config)
     experiment_dir = create_experiment_dir(config, args.config)
-    lang_codes = harvest_language_codes(config)
-    tokenizer = initialize_tokenizer(config)
-    pmap = create_permutations(config, tokenizer)
-    save_permutation_map(pmap, Path(experiment_dir) / "permutations.json")
-    train_data = MixtureOfBitexts.create_from_config(
-        config, "train", only_once_thru=False
-    )
-    dev_data = MixtureOfBitexts.create_from_config(config, "dev", only_once_thru=False)
-    tokenized_train = TokenizedMixtureOfBitexts(
-        train_data,
-        tokenizer,
-        lang_codes=lang_codes,
-        permutation_map=pmap,
-        use_alt_pad_token_for_tgt_lang=False,
-    )
-    tokenized_dev = TokenizedMixtureOfBitexts(
-        dev_data,
-        tokenizer,
-        lang_codes=lang_codes,
-        permutation_map=pmap,
-        use_alt_pad_token_for_tgt_lang=False,
-    )
+    bitexts = create_bitexts(config)
+    save_permutation_map(bitexts["cipher_map"], Path(experiment_dir) / "ciphers.json")
+
+    static_model = prepare_model_for_finetuning(ft_params)
     model = prepare_model_for_finetuning(ft_params)
+    train_mix = MixtureOfTextAndGoalEncodings(
+        bitexts["train"], static_model.model.encoder
+    )
+    dev_mix = MixtureOfTextAndGoalEncodings(bitexts["dev"], static_model.model.encoder)
     finetune(
         model,
-        tokenized_train,
-        tokenized_dev,
+        train_mix,
+        dev_mix,
         experiment_dir,
         ft_params,
     )

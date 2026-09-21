@@ -31,17 +31,20 @@ def reorganize(batch_size, root_dir, split, output_dir):
     FileExistsError
         If `output_dir` already exists.
     """
-    
+
     os.mkdir(output_dir)
     files = list(root_dir.glob(f"{split}.*"))
-    model_name = "facebook/nllb-200-distilled-600M"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    # model_name = "facebook/nllb-200-distilled-600M"
+    # tokenizer = AutoTokenizer.from_pretrained(model_name)
     lengths = []
-    with open(root_dir / f"{split}.en") as reader:
+    with open(root_dir / f"{split}.cs") as reader:
         for i, line in tqdm(enumerate(reader)):
             line = line.strip()
-            tokens = tokenizer(line)["input_ids"]
+            tokens = [byte for byte in line.encode()]
+            # tokens = tokenizer(line)["input_ids"]
             lengths.append((len(tokens), i))
+    average_length = sum([l for l, _ in lengths]) / len(lengths)
+    print(f"Average token length: {average_length}")
     line_nums_by_length = [line_num for _, line_num in sorted(lengths)]
     chunk_starts = [
         batch_size * k for k in range((len(line_nums_by_length) // batch_size) - 1)
@@ -62,11 +65,22 @@ def reorganize(batch_size, root_dir, split, output_dir):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Reorders the sentences of a parallel corpus so that batched sentences have similar lengths.")
-    parser.add_argument("--in_dir", type=str, required=True, help="Directory with the original files.")
-    parser.add_argument("--out_dir", type=str, required=True, help="Directory for storing the new, reordered files.")
-    parser.add_argument("--batch_size", type=int, default=128, help="Desired batch size.")
+    parser = argparse.ArgumentParser(
+        description="Reorders the sentences of a parallel corpus so that batched sentences have similar lengths."
+    )
+    parser.add_argument(
+        "--in_dir", type=str, required=True, help="Directory with the original files."
+    )
+    parser.add_argument(
+        "--out_dir",
+        type=str,
+        required=True,
+        help="Directory for storing the new, reordered files.",
+    )
+    parser.add_argument(
+        "--batch_size", type=int, default=128, help="Desired batch size."
+    )
     args = parser.parse_args()
-    in_dir = Path(args.in_dir)        
-    out_dir = Path(args.out_dir)  
+    in_dir = Path(args.in_dir)
+    out_dir = Path(args.out_dir)
     reorganize(args.batch_size, in_dir, "train", out_dir)
