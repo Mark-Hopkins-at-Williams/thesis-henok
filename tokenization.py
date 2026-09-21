@@ -78,6 +78,27 @@ class NllbTokenizer(HuggingfaceTokenizer):
         super().__init__(f"facebook/nllb-200-distilled-{size}", max_length=max_length)
 
 
+def strip_generated_ids(row, lang_id=1, eos_id=2):
+    """Cleans one row of generated (or gold target) ids in the byte/autocomplete layout.
+
+    Drops the decoder-start token, the language token, padding (0 and -100), and
+    everything after the first EOS. Returns the remaining ids, EOS included if present.
+    """
+    row = row.tolist() if hasattr(row, "tolist") else list(row)
+    if lang_id in row[:2]:
+        row = row[row.index(lang_id) + 1 :]
+    elif row and row[0] == eos_id:
+        row = row[1:]
+    kept = []
+    for t in row:
+        if t == eos_id:
+            kept.append(t)
+            break
+        if t > eos_id:
+            kept.append(t)
+    return kept
+
+
 class ByteTokenizer(Tokenizer):
     def __init__(self, max_length=None):
         self.special_tokens = {"<pad>": 0, "</s>": 2, "lang_Lang": 1}
@@ -99,7 +120,12 @@ class ByteTokenizer(Tokenizer):
         return self.special_tokens
 
     def batch_decode(self, token_ids):
-        pass
+        results = []
+        for row in token_ids:
+            kept = strip_generated_ids(row)
+            data = bytes(t - len(self.special_tokens) for t in kept if t > 2)
+            results.append(data.decode("utf-8", errors="replace"))
+        return results
 
     #     results = []  # list of strings, each of which is decoded sentence
 

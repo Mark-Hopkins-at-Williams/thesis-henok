@@ -30,12 +30,18 @@ def what_nllb_token_is_this(token_id, tokenizer=None):
 
 def prepare_model_for_finetuning(ft_params):
     if ft_params.should_finetune:
+        if ft_params.config_overrides:
+            raise ValueError("config_overrides only work when training from scratch")
         model = AutoModelForSeq2SeqLM.from_pretrained(ft_params.base_model)
         print("loaded pretrained model")
     else:
         model_config = AutoConfig.from_pretrained(ft_params.base_model)
+        for key, value in ft_params.config_overrides.items():
+            setattr(model_config, key, value)
         model = AutoModelForSeq2SeqLM.from_config(model_config)
         print("loaded architecture only")
+        if ft_params.config_overrides:
+            print(f"config overrides: {ft_params.config_overrides}")
     if hasattr(model.config, "max_length"):  # this should be in a GenerationConfig
         delattr(model.config, "max_length")
     if ft_params.freeze_decoder:
