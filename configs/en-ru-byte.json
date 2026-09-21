@@ -1,0 +1,35 @@
+{
+    "model_dir": "experiments/en-ru-byte",
+    "finetuning_parameters": {
+        "base_model": "facebook/nllb-200-distilled-600M",
+        "finetune": false,
+        "freeze_encoder": false,
+        "freeze_decoder": false,
+        "batch_size": 32,
+        "src_pad_id": 0,
+        "tgt_pad_id": -100,
+        "num_steps": 3000000,
+        "report_every": 10000,
+        "validate_every": 10000,
+        "patience": 20,
+        "checkpoint_every": 10000,
+        "forced_bos_token_id": 1,
+        "config_overrides": {
+            "pad_token_id": 0,
+            "vocab_size": 2307
+        }
+    },
+    "precomputed": {
+        "train": "/mnt/storage/hopkins/data/wmt19/ru-en/compressed_byte/train",
+        "dev": "/mnt/storage/hopkins/data/wmt19/ru-en/compressed_byte/dev",
+        "test": "/mnt/storage/hopkins/data/wmt19/ru-en/compressed_byte/test",
+        "src_cap": 8,
+        "tgt_cap": 0,
+        "src_max_length": 600,
+        "tgt_max_length": 600,
+        "src_lang": "eng_Latn",
+        "tgt_lang": "rus_Cyrl",
+        "lang_pair": "eng_Latn->rus_Cyrl",
+        "reference_test_file": "/mnt/storage/hopkins/data/wmt19/ru-en/test.ru"
+    }
+}

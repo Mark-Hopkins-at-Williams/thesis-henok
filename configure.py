@@ -1,9 +1,10 @@
 USE_CUDA = True
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
+from typing import Optional
 from permutations import (
     create_random_permutation_with_fixed_points,
     load_permutation_map,
@@ -21,6 +22,7 @@ from corpora import (
     BatchedBitext,
 )
 from compressor import load_autocompleting_tokenizer
+from precomputed import PrecomputedBatches, PrecomputedPairs
 
 
 @dataclass
@@ -37,6 +39,11 @@ class FinetuningParameters:
     gradient_accumulation_steps: int
     max_grad_norm: float
     dev_batches: int
+    # Optional; the defaults reproduce the behaviour before these existed.
+    checkpoint_every: int = 0  # steps between resumable checkpoints (0 = never)
+    seed: Optional[int] = None
+    config_overrides: dict = field(default_factory=dict)  # e.g. vocab_size, pad_token_id
+    forced_bos_token_id: Optional[int] = None  # None: the historical hack in validate.py
 
 
 def read_finetuning_params(config):
@@ -55,6 +62,10 @@ def read_finetuning_params(config):
         gradient_accumulation_steps=params.get("gradient_accumulation_steps", 1),
         max_grad_norm=params.get("max_grad_norm", 1.0),
         dev_batches=params.get("dev_batches", 100),
+        checkpoint_every=params.get("checkpoint_every", 0),
+        seed=params.get("seed"),
+        config_overrides=params.get("config_overrides", {}),
+        forced_bos_token_id=params.get("forced_bos_token_id"),
     )
     return f_params
 
@@ -113,7 +124,45 @@ def create_ciphers(config, tokenizer_map):
     return cipher_map
 
 
+def create_precomputed_bitexts(config):
+    """Data path for configs with a "precomputed" section (see precomputed.py).
+
+    Returns the same structure as create_bitexts, plus "pairs" (random access to each
+    split) and "required_vocab" (the smallest model vocabulary that fits every id).
+    """
+    pc = config["precomputed"]
+    params = config["finetuning_parameters"]
+    metadata = {
+        "lang1_code": pc.get("src_lang", "src"),
+        "lang2_code": pc.get("tgt_lang", "tgt"),
+    }
+    mixtures, pairs = dict(), dict()
+    for split in ["train", "dev", "test"]:
+        pairs[split] = PrecomputedPairs(
+            pc[split],
+            pc["src_cap"],
+            pc["tgt_cap"],
+            pc.get("src_max_length"),
+            pc.get("tgt_max_length"),
+        )
+        mixtures[split] = PrecomputedBatches(
+            pairs[split],
+            params["batch_size"],
+            params.get("src_pad_id", 0),
+            params.get("tgt_pad_id", -100),
+            metadata,
+            only_once_thru=(split != "train"),
+        )
+    mixtures["pairs"] = pairs
+    mixtures["required_vocab"] = 259 + 256 * max(pc["src_cap"], pc["tgt_cap"])
+    mixtures["cipher_map"] = dict()
+    mixtures["tokenizer_map"] = dict()
+    return mixtures
+
+
 def create_bitexts(config, cipher_map=None):
+    if "precomputed" in config:
+        return create_precomputed_bitexts(config)
     tokenizer_map = dict()
     for tokenizer_name in config["tokenizers"]:
         tokenizer_config = config["tokenizers"][tokenizer_name]
